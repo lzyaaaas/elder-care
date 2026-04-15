@@ -1,0 +1,57 @@
+const express = require("express");
+
+const adminAnalyticsRoutes = require("../modules/admin-analytics/admin-analytics.routes");
+const authRoutes = require("../modules/auth/auth.routes");
+const bookRoutes = require("../modules/books/books.routes");
+const boxRoutes = require("../modules/boxes/boxes.routes");
+const dashboardRoutes = require("../modules/dashboard/dashboard.routes");
+const donorAuthRoutes = require("../modules/donor-auth/donor-auth.routes");
+const donorPortalRoutes = require("../modules/donor-portal/donor-portal.routes");
+const donationKitRoutes = require("../modules/donation-kits/donation-kits.routes");
+const donationReceivableRoutes = require("../modules/donation-receivables/donation-receivables.routes");
+const donorRoutes = require("../modules/donors/donors.routes");
+const employeeRoutes = require("../modules/employees/employees.routes");
+const employeePortalRoutes = require("../modules/employee-portal/employee-portal.routes");
+const envelopeRoutes = require("../modules/envelopes/envelopes.routes");
+const eventRoutes = require("../modules/events/events.routes");
+const feedbackRoutes = require("../modules/feedback/feedback.routes");
+const invoiceRoutes = require("../modules/invoices/invoices.routes");
+const payableRoutes = require("../modules/payables/payables.routes");
+const paymentRoutes = require("../modules/payments/payments.routes");
+const promotionAssetRoutes = require("../modules/promotion-assets/promotion-assets.routes");
+const promotionInventoryRoutes = require("../modules/promotion-inventory/promotion-inventory.routes");
+const publicRoutes = require("../modules/public/public.routes");
+const receiptRoutes = require("../modules/receipts/receipts.routes");
+const scheduleRoutes = require("../modules/schedules/schedules.routes");
+const shippingRoutes = require("../modules/shippings/shippings.routes");
+const vendorRoutes = require("../modules/vendors/vendors.routes");
+
+const router = express.Router();
+
+router.use("/admin-analytics", adminAnalyticsRoutes);
+router.use("/auth", authRoutes);
+router.use("/donor-auth", donorAuthRoutes);
+router.use("/donor-portal", donorPortalRoutes);
+router.use("/employee-portal", employeePortalRoutes);
+router.use("/public", publicRoutes);
+router.use("/dashboard", dashboardRoutes);
+router.use("/employees", employeeRoutes);
+router.use("/donors", donorRoutes);
+router.use("/donation-receivables", donationReceivableRoutes);
+router.use("/receipts", receiptRoutes);
+router.use("/schedules", scheduleRoutes);
+router.use("/shippings", shippingRoutes);
+router.use("/feedback", feedbackRoutes);
+router.use("/donation-kits", donationKitRoutes);
+router.use("/books", bookRoutes);
+router.use("/envelopes", envelopeRoutes);
+router.use("/boxes", boxRoutes);
+router.use("/promotion-inventory", promotionInventoryRoutes);
+router.use("/events", eventRoutes);
+router.use("/promotion-assets", promotionAssetRoutes);
+router.use("/vendors", vendorRoutes);
+router.use("/invoices", invoiceRoutes);
+router.use("/payables", payableRoutes);
+router.use("/payments", paymentRoutes);
+
+module.exports = router;

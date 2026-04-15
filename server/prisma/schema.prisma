@@ -1,0 +1,662 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+enum Gender {
+  FEMALE
+  MALE
+  NON_BINARY
+  PREFER_NOT_TO_SAY
+}
+
+enum MaritalStatus {
+  SINGLE
+  MARRIED
+  PREFER_NOT_TO_SAY
+}
+
+enum AccountStatus {
+  ACTIVE
+  INACTIVE
+}
+
+enum SupporterType {
+  SUPPORTER
+  DONOR
+}
+
+enum DonationStatus {
+  PENDING
+  CONFIRMED
+  RECEIPTED
+  SHIPPED
+  COMPLETED
+  CANCELLED
+}
+
+enum DonationFrequency {
+  ONE_TIME
+  MONTHLY
+}
+
+enum ReceiptStatus {
+  ISSUED
+  VOID
+}
+
+enum PaymentMethod {
+  CASH
+  CARD
+  BANK_TRANSFER
+  CHECK
+  OTHER
+}
+
+enum FeedbackStatus {
+  NEW
+  REVIEWED
+  RESPONDED
+  CLOSED
+}
+
+enum ShippingStatus {
+  PENDING
+  PREPARING
+  SHIPPED
+  DELIVERED
+  RETURNED
+  LOST
+}
+
+enum KitComponentType {
+  BOOK
+  ENVELOPE
+  BOX
+}
+
+enum EmployeeRole {
+  ADMIN
+  OPERATIONS
+  FINANCE
+  EVENT
+  VOLUNTEER
+}
+
+enum EmployeeStatus {
+  ACTIVE
+  INACTIVE
+}
+
+enum ScheduleStatus {
+  SCHEDULED
+  COMPLETED
+  CANCELLED
+}
+
+enum EventType {
+  FUNDRAISER
+  SCHOOL_VISIT
+  COMMUNITY_OUTREACH
+  ONLINE_CAMPAIGN
+  BOOK_LAUNCH
+  OTHER
+}
+
+enum AssetCategory {
+  PRINT
+  DIGITAL
+  MERCHANDISE
+  DISPLAY
+  OTHER
+}
+
+enum AssetType {
+  FLYER
+  POSTER
+  BANNER
+  BOOKMARK
+  STICKER
+  GIFT
+  OTHER
+}
+
+enum InvoiceStatus {
+  DRAFT
+  PENDING_APPROVAL
+  APPROVED
+  PARTIALLY_PAID
+  PAID
+  OVERDUE
+  CANCELLED
+}
+
+enum PayableStatus {
+  OPEN
+  PARTIALLY_PAID
+  PAID
+  OVERDUE
+  CANCELLED
+}
+
+enum AssignmentStatus {
+  PLANNED
+  ASSIGNED
+  DISTRIBUTED
+  CANCELLED
+}
+
+model Donor {
+  id                Int                  @id @default(autoincrement())
+  donorCode         String               @unique @db.VarChar(30)
+  firstName         String               @db.VarChar(80)
+  lastName          String               @db.VarChar(80)
+  birthday          DateTime?            @db.Date
+  gender            Gender?
+  maritalStatus     MaritalStatus?
+  country           String               @db.VarChar(80)
+  state             String?              @db.VarChar(80)
+  city              String?              @db.VarChar(80)
+  streetAddress     String?              @db.VarChar(255)
+  postalCode        String?              @db.VarChar(20)
+  email             String?              @unique @db.VarChar(120)
+  phone             String?              @db.VarChar(30)
+  preferredLanguage String?              @db.VarChar(30)
+  passwordHash      String?              @db.VarChar(255)
+  accountStatus     AccountStatus        @default(INACTIVE)
+  supporterType     SupporterType        @default(SUPPORTER)
+  sourceEventId     Int?
+  lastLoginAt       DateTime?
+  registrationDate  DateTime             @db.Date
+  createdAt         DateTime             @default(now())
+  updatedAt         DateTime             @updatedAt
+  sourceEvent       Event?               @relation(fields: [sourceEventId], references: [id], onDelete: SetNull)
+  donations         DonationReceivable[]
+
+  @@index([lastName, firstName])
+  @@index([registrationDate])
+  @@index([accountStatus, supporterType])
+  @@index([sourceEventId])
+  @@map("donors")
+}
+
+model Employee {
+  id          Int                  @id @default(autoincrement())
+  employeeCode String              @unique @db.VarChar(30)
+  name        String               @db.VarChar(120)
+  gender      Gender?
+  maritalStatus MaritalStatus?
+  birthday    DateTime?            @db.Date
+  contact     String?              @db.VarChar(120)
+  schedule    String?              @db.VarChar(120)
+  hometown    String?              @db.VarChar(120)
+  position    String?              @db.VarChar(100)
+  email       String?              @unique @db.VarChar(120)
+  passwordHash String?             @db.VarChar(255)
+  role        EmployeeRole         @default(OPERATIONS)
+  status      EmployeeStatus       @default(ACTIVE)
+  createdAt   DateTime             @default(now())
+  updatedAt   DateTime             @updatedAt
+  donations   DonationReceivable[]
+  events      Event[]
+  invoices    Invoice[]
+  schedules   Schedule[]
+
+  @@index([status, role])
+  @@map("employees")
+}
+
+model DonationKit {
+  id          Int                  @id @default(autoincrement())
+  kitCode     String               @unique @db.VarChar(30)
+  kitName     String               @db.VarChar(120)
+  description String?              @db.VarChar(255)
+  isActive    Boolean              @default(true)
+  createdAt   DateTime             @default(now())
+  updatedAt   DateTime             @updatedAt
+  components  KitComponent[]
+  donations   DonationReceivable[]
+
+  @@index([isActive])
+  @@map("donation_kits")
+}
+
+model Press {
+  id            Int      @id @default(autoincrement())
+  pressName     String   @unique @db.VarChar(120)
+  description   String?  @db.VarChar(255)
+  contactPerson String?  @db.VarChar(120)
+  phoneNumber   String?  @db.VarChar(30)
+  email         String?  @db.VarChar(120)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  books         Book[]
+
+  @@map("presses")
+}
+
+model BookSeries {
+  id          Int      @id @default(autoincrement())
+  seriesName  String   @unique @db.VarChar(120)
+  description String?  @db.VarChar(255)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  books       Book[]
+
+  @@map("book_series")
+}
+
+model BookFormat {
+  id          Int      @id @default(autoincrement())
+  formatType  String   @db.VarChar(50)
+  language    String   @db.VarChar(30)
+  fileSizeMb  Decimal? @db.Decimal(8, 2)
+  isAvailable Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  books       Book[]
+
+  @@unique([formatType, language])
+  @@index([isAvailable])
+  @@map("book_formats")
+}
+
+model Book {
+  id              Int            @id @default(autoincrement())
+  pressId         Int
+  bookSeriesId    Int?
+  title           String         @db.VarChar(180)
+  bookFormatId    Int
+  description     String?        @db.VarChar(500)
+  pageCount       Int?
+  unitCost        Decimal        @db.Decimal(10, 2)
+  currentStock    Int            @default(0)
+  reorderLevel    Int            @default(0)
+  publicationDate DateTime?      @db.Date
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+  press           Press          @relation(fields: [pressId], references: [id], onDelete: Restrict)
+  bookSeries      BookSeries?    @relation(fields: [bookSeriesId], references: [id], onDelete: SetNull)
+  bookFormat      BookFormat     @relation(fields: [bookFormatId], references: [id], onDelete: Restrict)
+  kitComponents   KitComponent[]
+
+  @@index([pressId])
+  @@index([bookSeriesId])
+  @@index([bookFormatId])
+  @@index([title])
+  @@index([currentStock, reorderLevel])
+  @@map("books")
+}
+
+model Envelope {
+  id              Int           @id @default(autoincrement())
+  envelopeCode    String        @unique @db.VarChar(30)
+  size            String        @db.VarChar(50)
+  unitCost        Decimal       @db.Decimal(10, 2)
+  currentStock    Int           @default(0)
+  reorderLevel    Int           @default(0)
+  description     String?       @db.VarChar(255)
+  lastRestockDate DateTime?     @db.Date
+  isActive        Boolean       @default(true)
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+  kitComponents   KitComponent[]
+  invoiceItems    InvoiceItem[]
+
+  @@index([isActive])
+  @@index([currentStock, reorderLevel])
+  @@map("envelopes")
+}
+
+model Box {
+  id              Int           @id @default(autoincrement())
+  boxCode         String        @unique @db.VarChar(30)
+  size            String        @db.VarChar(50)
+  unitCost        Decimal       @db.Decimal(10, 2)
+  currentStock    Int           @default(0)
+  reorderLevel    Int           @default(0)
+  description     String?       @db.VarChar(255)
+  lastRestockDate DateTime?     @db.Date
+  isActive        Boolean       @default(true)
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+  kitComponents   KitComponent[]
+  invoiceItems    InvoiceItem[]
+
+  @@index([isActive])
+  @@index([currentStock, reorderLevel])
+  @@map("boxes")
+}
+
+model KitComponent {
+  id            Int              @id @default(autoincrement())
+  description   String?          @db.VarChar(255)
+  donationKitId Int
+  componentType KitComponentType
+  quantity      Int              @default(1)
+  bookId        Int?
+  boxId         Int?
+  envelopeId    Int?
+  createdAt     DateTime         @default(now())
+  updatedAt     DateTime         @updatedAt
+  donationKit   DonationKit      @relation(fields: [donationKitId], references: [id], onDelete: Cascade)
+  book          Book?            @relation(fields: [bookId], references: [id], onDelete: SetNull)
+  box           Box?             @relation(fields: [boxId], references: [id], onDelete: SetNull)
+  envelope      Envelope?        @relation(fields: [envelopeId], references: [id], onDelete: SetNull)
+
+  @@index([donationKitId])
+  @@index([bookId])
+  @@index([boxId])
+  @@index([envelopeId])
+  @@map("kit_components")
+}
+
+model Event {
+  id          Int                  @id @default(autoincrement())
+  eventName   String               @db.VarChar(160)
+  description String?              @db.VarChar(500)
+  type        EventType            @default(OTHER)
+  startDate   DateTime
+  endDate     DateTime?
+  country     String               @db.VarChar(80)
+  state       String?              @db.VarChar(80)
+  city        String?              @db.VarChar(80)
+  employeeId  Int?
+  isActive    Boolean              @default(true)
+  createdAt   DateTime             @default(now())
+  updatedAt   DateTime             @updatedAt
+  employee    Employee?            @relation(fields: [employeeId], references: [id], onDelete: SetNull)
+  donations   DonationReceivable[]
+  sourceDonors Donor[]
+  schedules   Schedule[]
+  promotions  EventPromotion[]
+  assignments PromotionGiftAssignment[]
+
+  @@index([employeeId])
+  @@index([startDate, endDate])
+  @@index([isActive, type])
+  @@map("events")
+}
+
+model Schedule {
+  id         Int            @id @default(autoincrement())
+  employeeId Int
+  eventId    Int?
+  shiftDate  DateTime       @db.Date
+  startTime  String         @db.VarChar(10)
+  endTime    String         @db.VarChar(10)
+  status     ScheduleStatus @default(SCHEDULED)
+  notes      String?        @db.VarChar(255)
+  createdAt  DateTime       @default(now())
+  updatedAt  DateTime       @updatedAt
+  employee   Employee       @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  event      Event?         @relation(fields: [eventId], references: [id], onDelete: SetNull)
+
+  @@index([employeeId])
+  @@index([eventId])
+  @@index([shiftDate, status])
+  @@map("schedules")
+}
+
+model PromotionAsset {
+  id              Int                  @id @default(autoincrement())
+  assetCode       String               @unique @db.VarChar(30)
+  assetCategory   AssetCategory        @default(OTHER)
+  assetName       String               @db.VarChar(160)
+  description     String?              @db.VarChar(255)
+  assetType       AssetType            @default(OTHER)
+  isActive        Boolean              @default(true)
+  createdAt       DateTime             @default(now())
+  updatedAt       DateTime             @updatedAt
+  eventPromotions EventPromotion[]
+
+  @@index([isActive, assetCategory, assetType])
+  @@map("promotion_assets")
+}
+
+model PromotionInventory {
+  id                     Int                       @id @default(autoincrement())
+  inventoryCode          String                    @unique @db.VarChar(30)
+  promotionInventoryType String                    @db.VarChar(80)
+  size                   String?                   @db.VarChar(50)
+  unitCost               Decimal                   @db.Decimal(10, 2)
+  currentStock           Int                       @default(0)
+  reorderLevel           Int                       @default(0)
+  description            String?                   @db.VarChar(255)
+  lastRestockDate        DateTime?                 @db.Date
+  isActive               Boolean                   @default(true)
+  createdAt              DateTime                  @default(now())
+  updatedAt              DateTime                  @updatedAt
+  assignments            PromotionGiftAssignment[]
+  invoiceItems           InvoiceItem[]
+
+  @@index([isActive])
+  @@index([currentStock, reorderLevel])
+  @@map("promotion_inventory")
+}
+
+model DonationReceivable {
+  id             Int                  @id @default(autoincrement())
+  donationCode   String               @unique @db.VarChar(30)
+  donorId        Int
+  eventId        Int?
+  donationAmount Decimal              @db.Decimal(10, 2)
+  donationDate   DateTime             @db.Date
+  donationFrequency DonationFrequency @default(ONE_TIME)
+  status         DonationStatus       @default(PENDING)
+  donationKitId  Int?
+  employeeId     Int?
+  notes          String?              @db.VarChar(500)
+  createdAt      DateTime             @default(now())
+  updatedAt      DateTime             @updatedAt
+  donor          Donor                @relation(fields: [donorId], references: [id], onDelete: Restrict)
+  event          Event?               @relation(fields: [eventId], references: [id], onDelete: SetNull)
+  donationKit    DonationKit?         @relation(fields: [donationKitId], references: [id], onDelete: SetNull)
+  employee       Employee?            @relation(fields: [employeeId], references: [id], onDelete: SetNull)
+  receipts       DonationReceipt[]
+  feedbacks      Feedback[]
+  shippings      Shipping[]
+
+  @@index([donorId])
+  @@index([eventId])
+  @@index([donationKitId])
+  @@index([employeeId])
+  @@index([donationFrequency])
+  @@index([donationDate, status])
+  @@map("donation_receivables")
+}
+
+model DonationReceipt {
+  id            Int            @id @default(autoincrement())
+  receiptNumber String         @unique @db.VarChar(30)
+  donationId    Int
+  amount        Decimal        @db.Decimal(10, 2)
+  receiptDate   DateTime       @db.Date
+  paymentMethod PaymentMethod
+  transactionId String?        @db.VarChar(80)
+  status        ReceiptStatus  @default(ISSUED)
+  notes         String?        @db.VarChar(255)
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+  donation      DonationReceivable @relation(fields: [donationId], references: [id], onDelete: Cascade)
+
+  @@index([donationId])
+  @@index([receiptDate])
+  @@map("donation_receipts")
+}
+
+model Shipping {
+  id             Int            @id @default(autoincrement())
+  donationId     Int
+  trackingNumber String?        @unique @db.VarChar(80)
+  carrier        String?        @db.VarChar(80)
+  shippedDate    DateTime?      @db.Date
+  deliveryDate   DateTime?      @db.Date
+  shippingCost   Decimal?       @db.Decimal(10, 2)
+  status         ShippingStatus @default(PENDING)
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+  donation       DonationReceivable @relation(fields: [donationId], references: [id], onDelete: Cascade)
+
+  @@index([donationId])
+  @@index([status, shippedDate])
+  @@map("shippings")
+}
+
+model Feedback {
+  id              Int            @id @default(autoincrement())
+  donationId      Int
+  feedbackContent String         @db.VarChar(1000)
+  rating          Int?
+  feedbackDate    DateTime       @db.Date
+  responseContent String?        @db.VarChar(1000)
+  responseDate    DateTime?      @db.Date
+  status          FeedbackStatus @default(NEW)
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+  donation        DonationReceivable @relation(fields: [donationId], references: [id], onDelete: Cascade)
+
+  @@index([donationId])
+  @@index([status, feedbackDate])
+  @@map("feedback")
+}
+
+model EventPromotion {
+  id                     Int            @id @default(autoincrement())
+  eventId                Int
+  promotionAssetId       Int
+  promotionAssetQuantity Int            @default(1)
+  createdAt              DateTime       @default(now())
+  updatedAt              DateTime       @updatedAt
+  event                  Event          @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  promotionAsset         PromotionAsset @relation(fields: [promotionAssetId], references: [id], onDelete: Restrict)
+
+  @@unique([eventId, promotionAssetId])
+  @@index([promotionAssetId])
+  @@map("event_promotions")
+}
+
+model PromotionGiftAssignment {
+  id                   Int               @id @default(autoincrement())
+  eventId              Int
+  promotionInventoryId Int
+  giftQuantity         Int               @default(1)
+  giftDate             DateTime          @db.Date
+  status               AssignmentStatus  @default(PLANNED)
+  createdAt            DateTime          @default(now())
+  updatedAt            DateTime          @updatedAt
+  event                Event             @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  promotionInventory   PromotionInventory @relation(fields: [promotionInventoryId], references: [id], onDelete: Restrict)
+
+  @@index([eventId])
+  @@index([promotionInventoryId])
+  @@index([giftDate, status])
+  @@map("promotion_gift_assignments")
+}
+
+model Vendor {
+  id             Int       @id @default(autoincrement())
+  vendorCode     String    @unique @db.VarChar(30)
+  name           String    @db.VarChar(160)
+  contactPerson  String?   @db.VarChar(120)
+  phoneNumber    String?   @db.VarChar(30)
+  address        String?   @db.VarChar(255)
+  email          String?   @db.VarChar(120)
+  rating         Int?
+  supplyType     String?   @db.VarChar(100)
+  lastSupplyDate DateTime? @db.Date
+  isActive       Boolean   @default(true)
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  invoices       Invoice[]
+
+  @@index([isActive, supplyType])
+  @@map("vendors")
+}
+
+model Invoice {
+  id           Int            @id @default(autoincrement())
+  invoiceNumber String        @unique @db.VarChar(30)
+  employeeId   Int?
+  invoiceDate  DateTime       @db.Date
+  dueDate      DateTime       @db.Date
+  vendorId     Int
+  status       InvoiceStatus  @default(DRAFT)
+  notes        String?        @db.VarChar(500)
+  subtotal     Decimal        @default(0) @db.Decimal(10, 2)
+  taxAmount    Decimal        @default(0) @db.Decimal(10, 2)
+  totalAmount  Decimal        @default(0) @db.Decimal(10, 2)
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+  employee     Employee?      @relation(fields: [employeeId], references: [id], onDelete: SetNull)
+  vendor       Vendor         @relation(fields: [vendorId], references: [id], onDelete: Restrict)
+  items        InvoiceItem[]
+  payable      Payable?
+
+  @@index([employeeId])
+  @@index([vendorId])
+  @@index([invoiceDate, dueDate, status])
+  @@map("invoices")
+}
+
+model InvoiceItem {
+  id                  Int                 @id @default(autoincrement())
+  invoiceId           Int
+  envelopeId          Int?
+  boxId               Int?
+  promotionInventoryId Int?
+  description         String?             @db.VarChar(255)
+  quantity            Int                 @default(1)
+  unitPrice           Decimal             @default(0) @db.Decimal(10, 2)
+  amount              Decimal             @default(0) @db.Decimal(10, 2)
+  createdAt           DateTime            @default(now())
+  updatedAt           DateTime            @updatedAt
+  invoice             Invoice             @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  envelope            Envelope?           @relation(fields: [envelopeId], references: [id], onDelete: SetNull)
+  box                 Box?                @relation(fields: [boxId], references: [id], onDelete: SetNull)
+  promotionInventory  PromotionInventory? @relation(fields: [promotionInventoryId], references: [id], onDelete: SetNull)
+
+  @@index([invoiceId])
+  @@index([envelopeId])
+  @@index([boxId])
+  @@index([promotionInventoryId])
+  @@map("invoice_items")
+}
+
+model Payable {
+  id              Int            @id @default(autoincrement())
+  invoiceId       Int            @unique
+  remainingAmount Decimal        @db.Decimal(10, 2)
+  dueDate         DateTime       @db.Date
+  paymentTerms    String?        @db.VarChar(120)
+  notes           String?        @db.VarChar(255)
+  status          PayableStatus  @default(OPEN)
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+  invoice         Invoice        @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  payments        InvoicePayment[]
+
+  @@index([dueDate, status])
+  @@map("payables")
+}
+
+model InvoicePayment {
+  id              Int           @id @default(autoincrement())
+  payableId       Int
+  amount          Decimal       @db.Decimal(10, 2)
+  paymentDate     DateTime      @db.Date
+  paymentMethod   PaymentMethod
+  referenceNumber String?       @db.VarChar(80)
+  notes           String?       @db.VarChar(255)
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+  payable         Payable       @relation(fields: [payableId], references: [id], onDelete: Cascade)
+
+  @@index([payableId])
+  @@index([paymentDate])
+  @@map("invoice_payments")
+}
