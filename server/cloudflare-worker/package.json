@@ -4,6 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "build": "echo \"Worker source is ready for deployment.\"",
     "dev": "wrangler dev",
     "deploy": "wrangler deploy"
   },
