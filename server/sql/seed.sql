@@ -1,18 +1,9 @@
-USE nonprofit_storytelling_campaign;
-
 INSERT INTO employees (
   id, employee_code, name, gender, birthday, contact, schedule, hometown, position, email, password_hash, role, status
 ) VALUES
-  (1, 'EMP-001', 'Lina Chen', 'FEMALE', '1998-04-15', '+86-13800000001', 'Mon-Fri', 'Shanghai', 'Campaign Manager', 'lina@example.org', '$2b$10$demo.admin.hash', 'ADMIN', 'ACTIVE'),
-  (2, 'EMP-002', 'David Lin', 'MALE', '1997-09-21', '+86-13800000002', 'Tue-Sat', 'Suzhou', 'Finance Coordinator', 'david@example.org', '$2b$10$demo.finance.hash', 'FINANCE', 'ACTIVE'),
-  (3, 'EMP-003', 'Amy Wu', 'FEMALE', '1999-01-09', '+86-13800000003', 'Wed-Sun', 'Hangzhou', 'Event Lead', 'amy@example.org', '$2b$10$demo.event.hash', 'EVENT', 'ACTIVE');
-
-INSERT INTO donors (
-  id, donor_code, first_name, last_name, birthday, gender, country, state, city, street_address, postal_code, email, phone, preferred_language, password_hash, account_status, supporter_type, source_event_id, last_login_at, registration_date
-) VALUES
-  (1, 'DON-001', 'Mei', 'Zhang', '1994-06-01', 'FEMALE', 'China', 'Shanghai', 'Shanghai', '88 Nanjing Rd', '200001', 'mei.zhang@example.com', '+86-13900000001', 'zh-CN', '$2b$10$demo.donor.hash', 'ACTIVE', 'DONOR', 1, '2026-04-02 10:00:00', '2026-01-05'),
-  (2, 'DON-002', 'Jason', 'Wang', '1989-03-12', 'MALE', 'China', 'Beijing', 'Beijing', '16 East Ave', '100000', 'jason.wang@example.com', '+86-13900000002', 'en', NULL, 'INACTIVE', 'DONOR', 1, NULL, '2026-01-10'),
-  (3, 'DON-003', 'Sara', 'Liu', '1996-11-08', 'FEMALE', 'China', 'Guangdong', 'Shenzhen', '205 Bay St', '518000', 'sara.liu@example.com', '+86-13900000003', 'zh-CN', NULL, 'INACTIVE', 'SUPPORTER', 2, NULL, '2026-02-02');
+  (1, 'EMP-ADMIN-001', 'System Admin', 'FEMALE', '1990-04-15', '+86-13800000001', 'Mon-Fri', 'Shanghai', 'Administrator', 'admin@example.org', '$2a$10$VnXNzApwki1JVzLwy0rDreK.Xs90OUq6qPIWYtiq8B7R490S.ZF0.', 'ADMIN', 'ACTIVE'),
+  (2, 'EMP-OPS-001', 'Amy Wu', 'FEMALE', '1997-09-21', '+86-13800000002', 'Tue-Sat', 'Suzhou', 'Campaign Coordinator', 'operations@example.org', '$2a$10$5fJPJg4m4tkhRHRYmkCMnOeNbT68JkeH3ofNfg.xQzjO3J8c4ClyK', 'OPERATIONS', 'ACTIVE'),
+  (3, 'EMP-EVT-001', 'Kevin Fang', 'MALE', '1999-01-09', '+86-13800000003', 'Wed-Sun', 'Hangzhou', 'Event Lead', 'kevin.fang@example.org', '$2a$10$5fJPJg4m4tkhRHRYmkCMnOeNbT68JkeH3ofNfg.xQzjO3J8c4ClyK', 'EVENT', 'ACTIVE');
 
 INSERT INTO donation_kits (
   id, kit_code, kit_name, description, is_active
@@ -67,6 +58,13 @@ INSERT INTO events (
   (1, 'Spring Storytelling Fundraiser', 'Launch event for the storybook donation campaign.', 'FUNDRAISER', '2026-04-12 10:00:00', '2026-04-12 16:00:00', 'China', 'Shanghai', 'Shanghai', 3, 1),
   (2, 'School Reading Outreach', 'Volunteer reading day with promotional giveaway.', 'SCHOOL_VISIT', '2026-04-25 09:00:00', '2026-04-25 12:00:00', 'China', 'Jiangsu', 'Suzhou', 3, 1);
 
+INSERT INTO donors (
+  id, donor_code, first_name, last_name, birthday, gender, country, state, city, street_address, postal_code, email, phone, preferred_language, password_hash, account_status, supporter_type, source_event_id, last_login_at, registration_date
+) VALUES
+  (1, 'DON-DEMO-001', 'Demo', 'Donor', '1994-06-01', 'FEMALE', 'China', 'Shanghai', 'Shanghai', '88 Nanjing Rd', '200001', 'demo.donor@example.org', '+86-13900000001', 'zh-CN', '$2a$10$hlRmkIMuXguk0hXAIspZU.gV89cNx2G35q5RZLkzxC/7gj6eEA5TO', 'ACTIVE', 'DONOR', 1, '2026-04-02 10:00:00', '2026-01-05'),
+  (2, 'DON-002', 'Jason', 'Wang', '1989-03-12', 'MALE', 'China', 'Beijing', 'Beijing', '16 East Ave', '100000', 'jason.wang@example.com', '+86-13900000002', 'en', NULL, 'INACTIVE', 'DONOR', 1, NULL, '2026-01-10'),
+  (3, 'DON-003', 'Sara', 'Liu', '1996-11-08', 'FEMALE', 'China', 'Guangdong', 'Shenzhen', '205 Bay St', '518000', 'sara.liu@example.com', '+86-13900000003', 'zh-CN', NULL, 'INACTIVE', 'SUPPORTER', 2, NULL, '2026-02-02');
+
 INSERT INTO schedules (
   id, employee_id, event_id, shift_date, start_time, end_time, status, notes
 ) VALUES
@@ -90,9 +88,9 @@ INSERT INTO promotion_inventory (
 INSERT INTO donation_receivables (
   id, donation_code, donor_id, event_id, donation_amount, donation_date, donation_frequency, status, donation_kit_id, employee_id, notes
 ) VALUES
-  (1, 'DR-2026-001', 1, 1, 200.00, '2026-03-28', 'ONE_TIME', 'COMPLETED', 1, 1, 'Early supporter from launch mailing list.'),
-  (2, 'DR-2026-002', 2, 1, 500.00, '2026-03-29', 'MONTHLY', 'SHIPPED', 2, 1, 'Corporate matching donation pending final docs.'),
-  (3, 'DR-2026-003', 3, 2, 120.00, '2026-03-30', 'ONE_TIME', 'CONFIRMED', 1, 1, 'Requested simplified receipt language.');
+  (1, 'DR-DEMO-001', 1, 1, 200.00, '2026-03-28', 'ONE_TIME', 'COMPLETED', 1, 1, 'Early supporter from launch mailing list.'),
+  (2, 'DR-DEMO-002', 2, 1, 500.00, '2026-03-29', 'MONTHLY', 'SHIPPED', 2, 1, 'Corporate matching donation pending final docs.'),
+  (3, 'DR-DEMO-003', 3, 2, 120.00, '2026-03-30', 'ONE_TIME', 'CONFIRMED', 1, 1, 'Requested simplified receipt language.');
 
 INSERT INTO donation_receipts (
   id, receipt_number, donation_id, amount, receipt_date, payment_method, transaction_id, status, notes
