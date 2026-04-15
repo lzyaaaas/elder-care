@@ -722,6 +722,184 @@ async function getSummary(env) {
   }
 }
 
+async function getDashboardAnalytics(env) {
+  const connection = await connect(env);
+
+  try {
+    const [
+      [summaryRow],
+      genderRows,
+      languageRows,
+      countryRows,
+      shippingRows,
+      feedbackRatingRows,
+      feedbackStatusRows,
+      donationTrendRows,
+      eventRows,
+      invoiceRows,
+      payableRows,
+      inventoryRows,
+    ] = await Promise.all([
+      connection.query(`
+        SELECT
+          (SELECT COUNT(*) FROM donors) AS totalDonors,
+          (SELECT COUNT(*) FROM donation_receivables) AS totalDonations,
+          (SELECT COALESCE(SUM(donation_amount), 0) FROM donation_receivables) AS totalDonationValue,
+          (SELECT COUNT(*) FROM feedback) AS totalFeedback,
+          (SELECT COUNT(*) FROM events) AS totalEvents,
+          (SELECT COUNT(*) FROM payables WHERE status IN ('OPEN', 'PARTIALLY_PAID', 'OVERDUE')) AS openPayables,
+          (SELECT COUNT(*) FROM invoices) AS totalInvoices,
+          (SELECT COALESCE(SUM(remaining_amount), 0) FROM payables WHERE status IN ('OPEN', 'PARTIALLY_PAID', 'OVERDUE')) AS outstandingPayablesAmount,
+          (SELECT ROUND(COALESCE(AVG(rating), 0), 1) FROM feedback WHERE rating IS NOT NULL) AS averageFeedbackRating
+      `),
+      connection.query(`
+        SELECT COALESCE(gender, 'UNKNOWN') AS label, COUNT(*) AS value
+        FROM donors
+        GROUP BY COALESCE(gender, 'UNKNOWN')
+        ORDER BY value DESC
+      `),
+      connection.query(`
+        SELECT COALESCE(preferred_language, 'UNKNOWN') AS label, COUNT(*) AS value
+        FROM donors
+        GROUP BY COALESCE(preferred_language, 'UNKNOWN')
+        ORDER BY value DESC
+      `),
+      connection.query(`
+        SELECT COALESCE(country, 'UNKNOWN') AS label, COUNT(*) AS value
+        FROM donors
+        GROUP BY COALESCE(country, 'UNKNOWN')
+        ORDER BY value DESC
+      `),
+      connection.query(`
+        SELECT status AS label, COUNT(*) AS value
+        FROM shippings
+        GROUP BY status
+        ORDER BY value DESC
+      `),
+      connection.query(`
+        SELECT CAST(rating AS CHAR) AS label, COUNT(*) AS value
+        FROM feedback
+        WHERE rating IS NOT NULL
+        GROUP BY rating
+        ORDER BY rating DESC
+      `),
+      connection.query(`
+        SELECT status AS label, COUNT(*) AS value
+        FROM feedback
+        GROUP BY status
+        ORDER BY value DESC
+      `),
+      connection.query(`
+        SELECT DATE_FORMAT(donation_date, '%Y-%m') AS month, COALESCE(SUM(donation_amount), 0) AS donationValue
+        FROM donation_receivables
+        GROUP BY DATE_FORMAT(donation_date, '%Y-%m')
+        ORDER BY month ASC
+      `),
+      connection.query(`
+        SELECT
+          COUNT(*) AS totalEvents,
+          SUM(CASE WHEN is_active = 1 THEN 1 ELSE 0 END) AS activeEvents,
+          SUM(CASE WHEN start_date >= NOW() THEN 1 ELSE 0 END) AS upcomingEvents
+        FROM events
+      `),
+      connection.query(`
+        SELECT
+          COALESCE(SUM(total_amount), 0) AS totalInvoiceAmount
+        FROM invoices
+      `),
+      connection.query(`
+        SELECT status AS label, COUNT(*) AS value
+        FROM payables
+        GROUP BY status
+        ORDER BY value DESC
+      `),
+      connection.query(`
+        SELECT code, itemName, currentStock, reorderLevel
+        FROM (
+          SELECT envelope_code AS code, CONCAT('Envelope ', size) AS itemName, current_stock AS currentStock, reorder_level AS reorderLevel
+          FROM envelopes
+          UNION ALL
+          SELECT box_code AS code, CONCAT('Box ', size) AS itemName, current_stock AS currentStock, reorder_level AS reorderLevel
+          FROM boxes
+          UNION ALL
+          SELECT inventory_code AS code, promotion_inventory_type AS itemName, current_stock AS currentStock, reorder_level AS reorderLevel
+          FROM promotion_inventory
+          UNION ALL
+          SELECT kit_code AS code, kit_name AS itemName, 0 AS currentStock, 0 AS reorderLevel
+          FROM donation_kits
+        ) inventory_snapshot
+        WHERE currentStock <= reorderLevel
+        ORDER BY currentStock ASC, reorderLevel DESC
+        LIMIT 6
+      `),
+    ]);
+
+    const summary = summaryRow?.[0] || {
+      totalDonors: 0,
+      totalDonations: 0,
+      totalDonationValue: 0,
+      totalFeedback: 0,
+      totalEvents: 0,
+      openPayables: 0,
+      totalInvoices: 0,
+      outstandingPayablesAmount: 0,
+      averageFeedbackRating: 0,
+    };
+
+    const eventSummaryRow = eventRows?.[0]?.[0] || {
+      totalEvents: 0,
+      activeEvents: 0,
+      upcomingEvents: 0,
+    };
+
+    const financeInvoiceRow = invoiceRows?.[0]?.[0] || {
+      totalInvoiceAmount: 0,
+    };
+
+    return success({
+      message: "Dashboard analytics loaded.",
+      data: {
+        summary,
+        donationTrend: donationTrendRows?.[0] || [],
+        donorDemographics: {
+          byGender: genderRows?.[0] || [],
+          byLanguage: languageRows?.[0] || [],
+          byCountry: countryRows?.[0] || [],
+        },
+        shippingStatus: shippingRows?.[0] || [],
+        feedbackSummary: {
+          averageRating: summary.averageFeedbackRating || 0,
+          byRating: feedbackRatingRows?.[0] || [],
+          byStatus: feedbackStatusRows?.[0] || [],
+        },
+        inventoryAlerts: (inventoryRows?.[0] || []).map((item) => ({
+          label: item.itemName,
+          code: item.code,
+          currentStock: item.currentStock,
+          reorderLevel: item.reorderLevel,
+        })),
+        eventSummary: eventSummaryRow,
+        financeOverview: {
+          totalInvoiceAmount: financeInvoiceRow.totalInvoiceAmount || 0,
+          outstandingPayablesAmount: summary.outstandingPayablesAmount || 0,
+          donationValue: summary.totalDonationValue || 0,
+          revenueVsCost: [
+            { label: "Donations", value: Number(summary.totalDonationValue || 0) },
+            { label: "Invoices", value: Number(financeInvoiceRow.totalInvoiceAmount || 0) },
+            {
+              label: "Outstanding payables",
+              value: Number(summary.outstandingPayablesAmount || 0),
+            },
+          ],
+          payableStatuses: payableRows?.[0] || [],
+        },
+      },
+    });
+  } finally {
+    await connection.end();
+  }
+}
+
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
@@ -804,6 +982,10 @@ export default {
         return await getSummary(env);
       }
 
+      if (url.pathname === "/api/dashboard/analytics" && request.method === "GET") {
+        return await getDashboardAnalytics(env);
+      }
+
       if (url.pathname === "/api/public/events" && request.method === "GET") {
         return await listPublicEvents(env);
       }
@@ -836,6 +1018,7 @@ export default {
           "/api/health/donors-count",
           "/api/health/donations-count",
           "/api/health/summary",
+          "/api/dashboard/analytics",
           "/api/public/events",
           "/api/auth/login",
           "/api/donor-auth/register",
