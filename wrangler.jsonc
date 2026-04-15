@@ -3,5 +3,11 @@
   "name": "elder-care-api",
   "main": "server/cloudflare-worker/src/index.js",
   "compatibility_date": "2026-04-15",
-  "compatibility_flags": ["nodejs_compat"]
+  "compatibility_flags": ["nodejs_compat"],
+  "hyperdrive": [
+    {
+      "binding": "HYPERDRIVE",
+      "id": "52db09048bc1436fa576359acad88a58"
+    }
+  ]
 }
