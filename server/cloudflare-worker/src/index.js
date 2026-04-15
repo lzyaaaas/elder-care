@@ -205,7 +205,7 @@ async function listPublicEvents(env) {
   const connection = await connect(env);
 
   try {
-    const [rows] = await connection.execute(
+    const [rows] = await connection.query(
       `SELECT id, event_name AS eventName, start_date AS startDate, city, country, type
        FROM events
        WHERE is_active = 1
@@ -228,7 +228,7 @@ async function loginEmployee(request, env) {
   const connection = await connect(env);
 
   try {
-    const [rows] = await connection.execute(
+    const [rows] = await connection.query(
       `SELECT id, employee_code, name, email, password_hash, role, status
        FROM employees
        WHERE email = ?
@@ -285,7 +285,7 @@ async function registerDonor(request, env) {
   try {
     await connection.beginTransaction();
 
-    const [existingRows] = await connection.execute(
+    const [existingRows] = await connection.query(
       `SELECT d.*,
               (SELECT COUNT(*) FROM donation_receivables dr WHERE dr.donor_id = d.id) AS donations_count
        FROM donors d
@@ -304,7 +304,7 @@ async function registerDonor(request, env) {
     let donorId = existingDonor?.id ?? null;
 
     if (existingDonor) {
-      await connection.execute(
+      await connection.query(
         `UPDATE donors
          SET first_name = ?,
              last_name = ?,
@@ -338,7 +338,7 @@ async function registerDonor(request, env) {
         ],
       );
     } else {
-      const [result] = await connection.execute(
+      const [result] = await connection.query(
         `INSERT INTO donors (
           donor_code, first_name, last_name, birthday, gender, country, state, city,
           email, phone, preferred_language, password_hash, account_status, supporter_type,
@@ -364,7 +364,7 @@ async function registerDonor(request, env) {
       donorId = result.insertId;
     }
 
-    const [donorRows] = await connection.execute(
+    const [donorRows] = await connection.query(
       `SELECT id, donor_code, first_name, last_name, email, supporter_type, account_status
        FROM donors
        WHERE id = ?
@@ -398,7 +398,7 @@ async function loginDonor(request, env) {
   const connection = await connect(env);
 
   try {
-    const [rows] = await connection.execute(
+    const [rows] = await connection.query(
       `SELECT id, donor_code, first_name, last_name, email, password_hash, supporter_type, account_status
        FROM donors
        WHERE email = ?
@@ -422,7 +422,7 @@ async function loginDonor(request, env) {
       return failure("Invalid email or password.", 401);
     }
 
-    await connection.execute("UPDATE donors SET last_login_at = NOW() WHERE id = ?", [donor.id]);
+    await connection.query("UPDATE donors SET last_login_at = NOW() WHERE id = ?", [donor.id]);
 
     const user = toDonorAuthUser(donor);
     const token = signToken({ accountType: "DONOR", ...user }, env);
@@ -478,7 +478,7 @@ async function createDonation(request, env) {
 
     let existingDonor = null;
     if (email) {
-      const [existingRows] = await connection.execute(
+      const [existingRows] = await connection.query(
         "SELECT * FROM donors WHERE email = ? LIMIT 1",
         [email],
       );
@@ -496,7 +496,7 @@ async function createDonation(request, env) {
     let donorId = existingDonor?.id ?? null;
 
     if (existingDonor) {
-      await connection.execute(
+      await connection.query(
         `UPDATE donors
          SET first_name = ?,
              last_name = ?,
@@ -533,7 +533,7 @@ async function createDonation(request, env) {
         ],
       );
     } else {
-      const [donorResult] = await connection.execute(
+      const [donorResult] = await connection.query(
         `INSERT INTO donors (
           donor_code, first_name, last_name, birthday, gender, country, state, city,
           email, phone, preferred_language, password_hash, account_status, supporter_type,
@@ -564,7 +564,7 @@ async function createDonation(request, env) {
     donorId = donorId || existingDonor.id;
 
     const donationDate = normalizeDate(body.donationDate) || new Date().toISOString().slice(0, 10);
-    const [donationResult] = await connection.execute(
+    const [donationResult] = await connection.query(
       `INSERT INTO donation_receivables (
         donation_code, donor_id, event_id, donation_amount, donation_date,
         donation_frequency, status, donation_kit_id, notes
@@ -581,7 +581,7 @@ async function createDonation(request, env) {
       ],
     );
 
-    const [donationRows] = await connection.execute(
+    const [donationRows] = await connection.query(
       `SELECT dr.id, dr.donation_code, dr.donation_amount, dr.donation_date, dr.donation_frequency, dr.status,
               d.id AS donor_id, d.donor_code, d.first_name, d.last_name, d.email
        FROM donation_receivables dr
@@ -622,7 +622,7 @@ async function createFeedback(request, env) {
     let finalDonationId = donationId;
 
     if (!finalDonationId && donationCode) {
-      const [donationRows] = await connection.execute(
+      const [donationRows] = await connection.query(
         "SELECT id FROM donation_receivables WHERE donation_code = ? LIMIT 1",
         [donationCode],
       );
@@ -639,14 +639,14 @@ async function createFeedback(request, env) {
     }
 
     const safeRating = rating && rating <= 5 ? rating : rating ? 5 : null;
-    const [result] = await connection.execute(
+    const [result] = await connection.query(
       `INSERT INTO feedback (
         donation_id, feedback_content, rating, feedback_date, status
       ) VALUES (?, ?, ?, ?, 'NEW')`,
       [finalDonationId, feedbackContent, safeRating, feedbackDate],
     );
 
-    const [rows] = await connection.execute("SELECT * FROM feedback WHERE id = ? LIMIT 1", [
+    const [rows] = await connection.query("SELECT * FROM feedback WHERE id = ? LIMIT 1", [
       result.insertId,
     ]);
 
