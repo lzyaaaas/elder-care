@@ -10,7 +10,8 @@
     "dev": "npm run dev -w server",
     "dev:client": "npm run dev -w client",
     "dev:server": "npm run dev -w server",
-    "build": "npm run build -w client && npm run build -w server",
+    "build": "npm run build -w client",
+    "build:full": "npm run build -w client && npm run build -w server",
     "seed": "npm run seed -w server",
     "prisma:migrate": "npm run prisma:migrate -w server",
     "prisma:generate": "npm run prisma:generate -w server"
