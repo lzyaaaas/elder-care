@@ -196,6 +196,32 @@ function getAuthToken(request) {
   return header.slice("Bearer ".length).trim();
 }
 
+function requireAuthenticatedUser(request, env, allowedTypes = []) {
+  const token = getAuthToken(request);
+
+  if (!token) {
+    throw Object.assign(new Error("Authentication required."), {
+      statusCode: 401,
+    });
+  }
+
+  try {
+    const payload = jwt.verify(token, env.JWT_SECRET || "worker-dev-secret");
+
+    if (allowedTypes.length && !allowedTypes.includes(payload.accountType)) {
+      throw Object.assign(new Error("You do not have access to this resource."), {
+        statusCode: 403,
+      });
+    }
+
+    return payload;
+  } catch (_error) {
+    throw Object.assign(new Error("Invalid or expired token."), {
+      statusCode: 401,
+    });
+  }
+}
+
 async function getSingleCount(connection, tableName) {
   const [rows] = await connection.query(`SELECT COUNT(*) AS total FROM \`${tableName}\`;`);
   return rows?.[0]?.total ?? 0;
@@ -900,6 +926,329 @@ async function getDashboardAnalytics(env) {
   }
 }
 
+async function getDonorProfile(request, env) {
+  const authUser = requireAuthenticatedUser(request, env, ["DONOR"]);
+  const connection = await connect(env);
+
+  try {
+    const [rows] = await connection.query(
+      `SELECT d.id, d.donor_code, d.first_name, d.last_name, d.email, d.birthday, d.gender,
+              d.phone, d.country, d.state, d.city, d.preferred_language, d.supporter_type,
+              d.account_status, d.registration_date, d.last_login_at,
+              e.id AS source_event_id, e.event_name AS source_event_name
+       FROM donors d
+       LEFT JOIN events e ON e.id = d.source_event_id
+       WHERE d.id = ?
+       LIMIT 1`,
+      [authUser.id],
+    );
+
+    const donor = rows?.[0];
+
+    if (!donor) {
+      return failure("Donor not found.", 404);
+    }
+
+    return success({
+      message: "Donor profile retrieved.",
+      data: {
+        id: donor.id,
+        donorCode: donor.donor_code,
+        firstName: donor.first_name,
+        lastName: donor.last_name,
+        email: donor.email,
+        birthday: donor.birthday,
+        gender: donor.gender,
+        maritalStatus: "PREFER_NOT_TO_SAY",
+        phone: donor.phone,
+        country: donor.country,
+        state: donor.state,
+        city: donor.city,
+        preferredLanguage: donor.preferred_language,
+        supporterType: donor.supporter_type,
+        accountStatus: donor.account_status,
+        registrationDate: donor.registration_date,
+        lastLoginAt: donor.last_login_at,
+        sourceEvent: donor.source_event_id
+          ? {
+              id: donor.source_event_id,
+              eventName: donor.source_event_name,
+            }
+          : null,
+      },
+    });
+  } finally {
+    await connection.end();
+  }
+}
+
+async function updateDonorProfile(request, env) {
+  const authUser = requireAuthenticatedUser(request, env, ["DONOR"]);
+  const body = await readBody(request);
+  const connection = await connect(env);
+
+  try {
+    const updates = [];
+    const values = [];
+    const fieldMap = [
+      ["firstName", "first_name"],
+      ["lastName", "last_name"],
+      ["birthday", "birthday"],
+      ["gender", "gender"],
+      ["phone", "phone"],
+      ["country", "country"],
+      ["state", "state"],
+      ["city", "city"],
+      ["preferredLanguage", "preferred_language"],
+    ];
+
+    for (const [inputKey, column] of fieldMap) {
+      if (!(inputKey in body)) {
+        continue;
+      }
+
+      let value = body[inputKey];
+      if (inputKey === "birthday") {
+        value = normalizeDate(value);
+      } else if (inputKey === "gender") {
+        value = optionalEnum(value, genderValues, "Gender");
+      } else {
+        value = normalizeNullableString(value);
+      }
+
+      updates.push(`${column} = ?`);
+      values.push(value);
+    }
+
+    if (!updates.length) {
+      return failure("No profile changes were provided.", 400);
+    }
+
+    values.push(authUser.id);
+    await connection.query(`UPDATE donors SET ${updates.join(", ")} WHERE id = ?`, values);
+
+    return await getDonorProfile(request, env);
+  } finally {
+    await connection.end();
+  }
+}
+
+async function getEmployeeProfile(request, env) {
+  const authUser = requireAuthenticatedUser(request, env, ["EMPLOYEE", "ADMIN"]);
+  const connection = await connect(env);
+
+  try {
+    const [rows] = await connection.query(
+      `SELECT e.id, e.employee_code, e.name, e.email, e.gender, e.birthday, e.contact, e.hometown,
+              e.position, e.role, e.status, e.created_at, e.updated_at,
+              (SELECT COUNT(*) FROM schedules s WHERE s.employee_id = e.id) AS schedules_count,
+              (SELECT COUNT(*) FROM events ev WHERE ev.employee_id = e.id) AS events_count,
+              (SELECT COUNT(*) FROM donation_receivables dr WHERE dr.employee_id = e.id) AS donations_count
+       FROM employees e
+       WHERE e.id = ?
+       LIMIT 1`,
+      [authUser.id],
+    );
+
+    const employee = rows?.[0];
+
+    if (!employee) {
+      return failure("Employee not found.", 404);
+    }
+
+    return success({
+      message: "Employee profile retrieved.",
+      data: {
+        id: employee.id,
+        employeeCode: employee.employee_code,
+        name: employee.name,
+        email: employee.email,
+        gender: employee.gender,
+        birthday: employee.birthday,
+        maritalStatus: "PREFER_NOT_TO_SAY",
+        contact: employee.contact,
+        hometown: employee.hometown,
+        position: employee.position,
+        role: employee.role,
+        status: employee.status,
+        createdAt: employee.created_at,
+        updatedAt: employee.updated_at,
+        _count: {
+          schedules: employee.schedules_count,
+          events: employee.events_count,
+          donations: employee.donations_count,
+        },
+      },
+    });
+  } finally {
+    await connection.end();
+  }
+}
+
+async function updateEmployeeProfile(request, env) {
+  const authUser = requireAuthenticatedUser(request, env, ["EMPLOYEE", "ADMIN"]);
+  const body = await readBody(request);
+  const connection = await connect(env);
+
+  try {
+    const updates = [];
+    const values = [];
+    const fieldMap = [
+      ["name", "name"],
+      ["email", "email"],
+      ["contact", "contact"],
+    ];
+
+    for (const [inputKey, column] of fieldMap) {
+      if (!(inputKey in body)) {
+        continue;
+      }
+
+      updates.push(`${column} = ?`);
+      values.push(normalizeNullableString(body[inputKey]));
+    }
+
+    if (!updates.length) {
+      return failure("No profile changes were provided.", 400);
+    }
+
+    values.push(authUser.id);
+    await connection.query(`UPDATE employees SET ${updates.join(", ")} WHERE id = ?`, values);
+
+    return await getEmployeeProfile(request, env);
+  } finally {
+    await connection.end();
+  }
+}
+
+async function updateEmployeePassword(request, env) {
+  const authUser = requireAuthenticatedUser(request, env, ["EMPLOYEE", "ADMIN"]);
+  const body = await readBody(request);
+  const currentPassword = requireNonEmptyString(body.currentPassword, "Current password", {
+    min: 1,
+  });
+  const newPassword = requireNonEmptyString(body.newPassword, "New password", { min: 6 });
+  const connection = await connect(env);
+
+  try {
+    const [rows] = await connection.query(
+      "SELECT id, password_hash FROM employees WHERE id = ? LIMIT 1",
+      [authUser.id],
+    );
+
+    const employee = rows?.[0];
+
+    if (!employee?.password_hash) {
+      return failure("Employee account not found.", 404);
+    }
+
+    const isValid = await bcrypt.compare(currentPassword, employee.password_hash);
+
+    if (!isValid) {
+      return failure("Current password is incorrect.", 400);
+    }
+
+    const nextHash = await bcrypt.hash(newPassword, 10);
+    await connection.query("UPDATE employees SET password_hash = ? WHERE id = ?", [
+      nextHash,
+      authUser.id,
+    ]);
+
+    return success({
+      message: "Password updated.",
+      data: true,
+    });
+  } finally {
+    await connection.end();
+  }
+}
+
+async function getEmployeeDashboard(request, env) {
+  const authUser = requireAuthenticatedUser(request, env, ["EMPLOYEE", "ADMIN"]);
+  const connection = await connect(env);
+
+  try {
+    const [employeeRows] = await connection.query(
+      `SELECT e.id, e.employee_code, e.name, e.email, e.contact, e.position, e.role,
+              (SELECT COUNT(*) FROM schedules s WHERE s.employee_id = e.id) AS schedules_count,
+              (SELECT COUNT(*) FROM events ev WHERE ev.employee_id = e.id) AS events_count,
+              (SELECT COUNT(*) FROM donation_receivables dr WHERE dr.employee_id = e.id) AS donations_count
+       FROM employees e
+       WHERE e.id = ?
+       LIMIT 1`,
+      [authUser.id],
+    );
+
+    const [scheduleRows] = await connection.query(
+      `SELECT s.id, s.shift_date, s.start_time, s.end_time, s.status, s.notes,
+              e.id AS event_id, e.event_name, e.city, e.country
+       FROM schedules s
+       LEFT JOIN events e ON e.id = s.event_id
+       WHERE s.employee_id = ?
+       ORDER BY s.shift_date ASC, s.start_time ASC
+       LIMIT 4`,
+      [authUser.id],
+    );
+
+    const [taskRows] = await connection.query(
+      `SELECT
+          (SELECT COUNT(*) FROM events WHERE employee_id = ? AND start_date >= NOW()) AS upcomingEventsCount,
+          (SELECT COUNT(*) FROM shippings s JOIN donation_receivables dr ON dr.id = s.donation_id WHERE dr.employee_id = ? AND s.status IN ('PENDING', 'PREPARING', 'SHIPPED')) AS shippingTasksCount,
+          (SELECT COUNT(*) FROM feedback f JOIN donation_receivables dr ON dr.id = f.donation_id WHERE dr.employee_id = ? AND f.status IN ('NEW', 'REVIEWED')) AS followUpsCount`,
+      [authUser.id, authUser.id, authUser.id],
+    );
+
+    const employee = employeeRows?.[0];
+
+    if (!employee) {
+      return failure("Employee not found.", 404);
+    }
+
+    return success({
+      message: "Employee dashboard loaded.",
+      data: {
+        employee: {
+          id: employee.id,
+          employeeCode: employee.employee_code,
+          name: employee.name,
+          email: employee.email,
+          contact: employee.contact,
+          position: employee.position,
+          role: employee.role,
+          _count: {
+            schedules: employee.schedules_count,
+            events: employee.events_count,
+            donations: employee.donations_count,
+          },
+        },
+        upcomingSchedules: (scheduleRows || []).map((shift) => ({
+          id: shift.id,
+          shiftDate: shift.shift_date,
+          startTime: shift.start_time,
+          endTime: shift.end_time,
+          status: shift.status,
+          notes: shift.notes,
+          event: shift.event_id
+            ? {
+                id: shift.event_id,
+                eventName: shift.event_name,
+                city: shift.city,
+                country: shift.country,
+              }
+            : null,
+        })),
+        taskSummary: taskRows?.[0] || {
+          upcomingEventsCount: 0,
+          shippingTasksCount: 0,
+          followUpsCount: 0,
+        },
+      },
+    });
+  } finally {
+    await connection.end();
+  }
+}
+
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
@@ -1002,12 +1351,36 @@ export default {
         return await loginDonor(request, env);
       }
 
+      if (url.pathname === "/api/donor-portal/profile" && request.method === "GET") {
+        return await getDonorProfile(request, env);
+      }
+
+      if (url.pathname === "/api/donor-portal/profile" && request.method === "PATCH") {
+        return await updateDonorProfile(request, env);
+      }
+
       if (url.pathname === "/api/public/donations" && request.method === "POST") {
         return await createDonation(request, env);
       }
 
       if (url.pathname === "/api/public/feedback" && request.method === "POST") {
         return await createFeedback(request, env);
+      }
+
+      if (url.pathname === "/api/employee-portal/dashboard" && request.method === "GET") {
+        return await getEmployeeDashboard(request, env);
+      }
+
+      if (url.pathname === "/api/employee-portal/me" && request.method === "GET") {
+        return await getEmployeeProfile(request, env);
+      }
+
+      if (url.pathname === "/api/employee-portal/me" && request.method === "PATCH") {
+        return await updateEmployeeProfile(request, env);
+      }
+
+      if (url.pathname === "/api/employee-portal/password" && request.method === "PATCH") {
+        return await updateEmployeePassword(request, env);
       }
 
       return failure("Route not found.", 404, {
@@ -1023,8 +1396,12 @@ export default {
           "/api/auth/login",
           "/api/donor-auth/register",
           "/api/donor-auth/login",
+          "/api/donor-portal/profile",
           "/api/public/donations",
           "/api/public/feedback",
+          "/api/employee-portal/dashboard",
+          "/api/employee-portal/me",
+          "/api/employee-portal/password",
         ],
       });
     } catch (error) {
