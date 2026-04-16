@@ -1019,6 +1019,175 @@ async function getDonorProfile(request, env) {
   }
 }
 
+async function listDonorDonations(request, env) {
+  const authUser = requireAuthenticatedUser(request, env, ["DONOR"]);
+  const connection = await connect(env);
+
+  try {
+    const [rows] = await connection.query(
+      `SELECT id, donation_code, donation_amount, donation_date, donation_frequency, status
+       FROM donation_receivables
+       WHERE donor_id = ?
+       ORDER BY donation_date DESC, id DESC`,
+      [authUser.id],
+    );
+
+    return success({
+      message: "Donor donations retrieved.",
+      data: rows.map((row) => ({
+        id: row.id,
+        donationCode: row.donation_code,
+        donationAmount: row.donation_amount,
+        donationDate: row.donation_date,
+        donationFrequency: row.donation_frequency,
+        status: row.status,
+      })),
+    });
+  } finally {
+    await connection.end();
+  }
+}
+
+async function listDonorReceipts(request, env) {
+  const authUser = requireAuthenticatedUser(request, env, ["DONOR"]);
+  const connection = await connect(env);
+
+  try {
+    const [rows] = await connection.query(
+      `SELECT r.id, r.receipt_number, r.amount, r.receipt_date, r.payment_method,
+              dr.id AS donation_id, dr.donation_code
+       FROM donation_receipts r
+       JOIN donation_receivables dr ON dr.id = r.donation_id
+       WHERE dr.donor_id = ?
+       ORDER BY r.receipt_date DESC, r.id DESC`,
+      [authUser.id],
+    );
+
+    return success({
+      message: "Donor receipts retrieved.",
+      data: rows.map((row) => ({
+        id: row.id,
+        receiptNumber: row.receipt_number,
+        amount: row.amount,
+        receiptDate: row.receipt_date,
+        paymentMethod: row.payment_method,
+        donation: {
+          id: row.donation_id,
+          donationCode: row.donation_code,
+        },
+      })),
+    });
+  } finally {
+    await connection.end();
+  }
+}
+
+async function listDonorShipping(request, env) {
+  const authUser = requireAuthenticatedUser(request, env, ["DONOR"]);
+  const connection = await connect(env);
+
+  try {
+    const [rows] = await connection.query(
+      `SELECT s.id, s.carrier, s.tracking_number, s.shipped_date, s.status,
+              dr.id AS donation_id, dr.donation_code
+       FROM shippings s
+       JOIN donation_receivables dr ON dr.id = s.donation_id
+       WHERE dr.donor_id = ?
+       ORDER BY s.shipped_date DESC, s.id DESC`,
+      [authUser.id],
+    );
+
+    return success({
+      message: "Donor shipping records retrieved.",
+      data: rows.map((row) => ({
+        id: row.id,
+        carrier: row.carrier,
+        trackingNumber: row.tracking_number,
+        shippedDate: row.shipped_date,
+        status: row.status,
+        donation: {
+          id: row.donation_id,
+          donationCode: row.donation_code,
+        },
+      })),
+    });
+  } finally {
+    await connection.end();
+  }
+}
+
+async function listDonorFeedback(request, env) {
+  const authUser = requireAuthenticatedUser(request, env, ["DONOR"]);
+  const connection = await connect(env);
+
+  try {
+    const [rows] = await connection.query(
+      `SELECT f.id, f.feedback_content, f.rating, f.feedback_date, f.response_content, f.status,
+              dr.id AS donation_id, dr.donation_code
+       FROM feedback f
+       JOIN donation_receivables dr ON dr.id = f.donation_id
+       WHERE dr.donor_id = ?
+       ORDER BY f.feedback_date DESC, f.id DESC`,
+      [authUser.id],
+    );
+
+    return success({
+      message: "Donor feedback retrieved.",
+      data: rows.map((row) => ({
+        id: row.id,
+        feedbackContent: row.feedback_content,
+        rating: row.rating,
+        feedbackDate: row.feedback_date,
+        responseContent: row.response_content,
+        status: row.status,
+        donation: {
+          id: row.donation_id,
+          donationCode: row.donation_code,
+        },
+      })),
+    });
+  } finally {
+    await connection.end();
+  }
+}
+
+async function createDonorFeedback(request, env) {
+  const authUser = requireAuthenticatedUser(request, env, ["DONOR"]);
+  const body = await readBody(request);
+  const donationId = requirePositiveNumber(body.donationId, "Donation");
+  const feedbackContent = requireNonEmptyString(body.feedbackContent, "Feedback content");
+  const rating = body.rating == null ? null : requirePositiveNumber(body.rating, "Rating");
+  const connection = await connect(env);
+
+  try {
+    const [donationRows] = await connection.query(
+      `SELECT id
+       FROM donation_receivables
+       WHERE id = ? AND donor_id = ?
+       LIMIT 1`,
+      [donationId, authUser.id],
+    );
+
+    if (!donationRows?.[0]?.id) {
+      return failure("Donation not found for this donor.", 404);
+    }
+
+    await connection.query(
+      `INSERT INTO feedback (donation_id, feedback_content, rating, feedback_date, status)
+       VALUES (?, ?, ?, CURRENT_DATE(), 'NEW')`,
+      [donationId, feedbackContent, rating ? Math.min(rating, 5) : null],
+    );
+
+    return success({
+      status: 201,
+      message: "Feedback submitted.",
+      data: true,
+    });
+  } finally {
+    await connection.end();
+  }
+}
+
 async function updateDonorProfile(request, env) {
   const authUser = requireAuthenticatedUser(request, env, ["DONOR"]);
   const body = await readBody(request);
@@ -1280,6 +1449,196 @@ async function getEmployeeDashboard(request, env) {
           followUpsCount: 0,
         },
       },
+    });
+  } finally {
+    await connection.end();
+  }
+}
+
+async function listEmployeeSchedule(request, env) {
+  const authUser = requireAuthenticatedUser(request, env, ["EMPLOYEE", "ADMIN"]);
+  const url = new URL(request.url);
+  const filter = url.searchParams.get("filter") || "all";
+  const connection = await connect(env);
+
+  try {
+    const [rows] = await connection.query(
+      `SELECT s.id, s.shift_date, s.start_time, s.end_time, s.status, s.notes,
+              e.id AS event_id, e.event_name, e.city, e.country
+       FROM schedules s
+       LEFT JOIN events e ON e.id = s.event_id
+       WHERE s.employee_id = ?
+       ORDER BY s.shift_date ASC, s.start_time ASC, s.id ASC`,
+      [authUser.id],
+    );
+
+    const today = new Date().toISOString().slice(0, 10);
+    let items = rows.map((row) => ({
+      id: row.id,
+      shiftDate: row.shift_date,
+      startTime: row.start_time,
+      endTime: row.end_time,
+      status: row.status,
+      notes: row.notes,
+      event: row.event_id
+        ? {
+            id: row.event_id,
+            eventName: row.event_name,
+            city: row.city,
+            country: row.country,
+          }
+        : null,
+    }));
+
+    if (filter === "completed") {
+      items = items.filter((item) => item.status === "COMPLETED");
+    } else if (filter === "cancelled") {
+      items = items.filter((item) => item.status === "CANCELLED");
+    } else if (filter === "upcoming") {
+      items = items.filter((item) => item.status === "SCHEDULED" && String(item.shiftDate).slice(0, 10) >= today);
+    }
+
+    return success({
+      message: "Employee schedule retrieved.",
+      data: items,
+    });
+  } finally {
+    await connection.end();
+  }
+}
+
+async function listEmployeeEvents(request, env) {
+  const authUser = requireAuthenticatedUser(request, env, ["EMPLOYEE", "ADMIN"]);
+  const connection = await connect(env);
+
+  try {
+    const [rows] = await connection.query(
+      `SELECT e.id, e.event_name, e.description, e.type, e.start_date, e.city, e.country, e.is_active,
+              (SELECT COUNT(*) FROM schedules s WHERE s.event_id = e.id AND s.employee_id = ?) AS schedules_count
+       FROM events e
+       WHERE e.employee_id = ?
+       ORDER BY e.start_date DESC, e.id DESC`,
+      [authUser.id, authUser.id],
+    );
+
+    return success({
+      message: "Employee events retrieved.",
+      data: rows.map((row) => ({
+        id: row.id,
+        eventName: row.event_name,
+        description: row.description,
+        type: row.type,
+        startDate: row.start_date,
+        city: row.city,
+        country: row.country,
+        isActive: Boolean(row.is_active),
+        schedules: Array.from({ length: Number(row.schedules_count || 0) }, (_, index) => ({ id: index + 1 })),
+      })),
+    });
+  } finally {
+    await connection.end();
+  }
+}
+
+async function listEmployeeDonations(request, env) {
+  const authUser = requireAuthenticatedUser(request, env, ["EMPLOYEE", "ADMIN"]);
+  const connection = await connect(env);
+
+  try {
+    const [rows] = await connection.query(
+      `SELECT dr.id, dr.donation_code, dr.donation_amount, dr.donation_date, dr.status,
+              d.first_name, d.last_name,
+              e.event_name
+       FROM donation_receivables dr
+       LEFT JOIN donors d ON d.id = dr.donor_id
+       LEFT JOIN events e ON e.id = dr.event_id
+       WHERE dr.employee_id = ?
+       ORDER BY dr.donation_date DESC, dr.id DESC`,
+      [authUser.id],
+    );
+
+    return success({
+      message: "Employee donation tasks retrieved.",
+      data: rows.map((row) => ({
+        id: row.id,
+        donationCode: row.donation_code,
+        donationAmount: row.donation_amount,
+        donationDate: row.donation_date,
+        status: row.status,
+        donor: row.first_name ? { firstName: row.first_name, lastName: row.last_name } : null,
+        event: row.event_name ? { eventName: row.event_name } : null,
+      })),
+    });
+  } finally {
+    await connection.end();
+  }
+}
+
+async function listEmployeeShippings(request, env) {
+  const authUser = requireAuthenticatedUser(request, env, ["EMPLOYEE", "ADMIN"]);
+  const connection = await connect(env);
+
+  try {
+    const [rows] = await connection.query(
+      `SELECT s.id, s.carrier, s.tracking_number, s.shipped_date, s.status,
+              dr.donation_code, d.first_name, d.last_name
+       FROM shippings s
+       JOIN donation_receivables dr ON dr.id = s.donation_id
+       LEFT JOIN donors d ON d.id = dr.donor_id
+       WHERE dr.employee_id = ?
+       ORDER BY s.shipped_date DESC, s.id DESC`,
+      [authUser.id],
+    );
+
+    return success({
+      message: "Employee shipping tasks retrieved.",
+      data: rows.map((row) => ({
+        id: row.id,
+        carrier: row.carrier,
+        trackingNumber: row.tracking_number,
+        shippedDate: row.shipped_date,
+        status: row.status,
+        donation: {
+          donationCode: row.donation_code,
+          donor: row.first_name ? { firstName: row.first_name, lastName: row.last_name } : null,
+        },
+      })),
+    });
+  } finally {
+    await connection.end();
+  }
+}
+
+async function listEmployeeFeedback(request, env) {
+  const authUser = requireAuthenticatedUser(request, env, ["EMPLOYEE", "ADMIN"]);
+  const connection = await connect(env);
+
+  try {
+    const [rows] = await connection.query(
+      `SELECT f.id, f.feedback_content, f.rating, f.feedback_date, f.response_content, f.status,
+              dr.donation_code, d.first_name, d.last_name
+       FROM feedback f
+       JOIN donation_receivables dr ON dr.id = f.donation_id
+       LEFT JOIN donors d ON d.id = dr.donor_id
+       WHERE dr.employee_id = ?
+       ORDER BY f.feedback_date DESC, f.id DESC`,
+      [authUser.id],
+    );
+
+    return success({
+      message: "Employee follow-up records retrieved.",
+      data: rows.map((row) => ({
+        id: row.id,
+        feedbackContent: row.feedback_content,
+        rating: row.rating,
+        feedbackDate: row.feedback_date,
+        responseContent: row.response_content,
+        status: row.status,
+        donation: {
+          donationCode: row.donation_code,
+          donor: row.first_name ? { firstName: row.first_name, lastName: row.last_name } : null,
+        },
+      })),
     });
   } finally {
     await connection.end();
@@ -2400,6 +2759,26 @@ export default {
         return await updateDonorProfile(request, env);
       }
 
+      if (url.pathname === "/api/donor-portal/donations" && request.method === "GET") {
+        return await listDonorDonations(request, env);
+      }
+
+      if (url.pathname === "/api/donor-portal/receipts" && request.method === "GET") {
+        return await listDonorReceipts(request, env);
+      }
+
+      if (url.pathname === "/api/donor-portal/shipping" && request.method === "GET") {
+        return await listDonorShipping(request, env);
+      }
+
+      if (url.pathname === "/api/donor-portal/feedback" && request.method === "GET") {
+        return await listDonorFeedback(request, env);
+      }
+
+      if (url.pathname === "/api/donor-portal/feedback" && request.method === "POST") {
+        return await createDonorFeedback(request, env);
+      }
+
       if (url.pathname === "/api/public/donations" && request.method === "POST") {
         return await createDonation(request, env);
       }
@@ -2410,6 +2789,26 @@ export default {
 
       if (url.pathname === "/api/employee-portal/dashboard" && request.method === "GET") {
         return await getEmployeeDashboard(request, env);
+      }
+
+      if (url.pathname === "/api/employee-portal/schedule" && request.method === "GET") {
+        return await listEmployeeSchedule(request, env);
+      }
+
+      if (url.pathname === "/api/employee-portal/events" && request.method === "GET") {
+        return await listEmployeeEvents(request, env);
+      }
+
+      if (url.pathname === "/api/employee-portal/donations" && request.method === "GET") {
+        return await listEmployeeDonations(request, env);
+      }
+
+      if (url.pathname === "/api/employee-portal/shippings" && request.method === "GET") {
+        return await listEmployeeShippings(request, env);
+      }
+
+      if (url.pathname === "/api/employee-portal/feedback" && request.method === "GET") {
+        return await listEmployeeFeedback(request, env);
       }
 
       if (url.pathname === "/api/employee-portal/me" && request.method === "GET") {
@@ -2458,9 +2857,18 @@ export default {
           "/api/donor-auth/register",
           "/api/donor-auth/login",
           "/api/donor-portal/profile",
+          "/api/donor-portal/donations",
+          "/api/donor-portal/receipts",
+          "/api/donor-portal/shipping",
+          "/api/donor-portal/feedback",
           "/api/public/donations",
           "/api/public/feedback",
           "/api/employee-portal/dashboard",
+          "/api/employee-portal/schedule",
+          "/api/employee-portal/events",
+          "/api/employee-portal/donations",
+          "/api/employee-portal/shippings",
+          "/api/employee-portal/feedback",
           "/api/employee-portal/me",
           "/api/employee-portal/password",
         ],
