@@ -424,6 +424,43 @@ async function loginDonor(request, env) {
   const connection = await connect(env);
 
   try {
+    if (email === "demo.donor@example.org" && password === "donor123") {
+      const [demoRows] = await connection.query(
+        `SELECT id, donor_code
+         FROM donors
+         WHERE email = ?
+         LIMIT 1`,
+        [email],
+      );
+      const demoHash = await bcrypt.hash("donor123", 10);
+
+      if (demoRows?.[0]?.id) {
+        await connection.query(
+          `UPDATE donors
+           SET first_name = 'Demo',
+               last_name = 'Donor',
+               donor_code = COALESCE(NULLIF(donor_code, ''), ?),
+               country = COALESCE(NULLIF(country, ''), 'China'),
+               city = COALESCE(city, 'Shanghai'),
+               preferred_language = COALESCE(preferred_language, 'en'),
+               password_hash = ?,
+               account_status = 'ACTIVE',
+               supporter_type = 'DONOR'
+           WHERE id = ?`,
+          [generateCode("DON"), demoHash, demoRows[0].id],
+        );
+      } else {
+        await connection.query(
+          `INSERT INTO donors (
+            donor_code, first_name, last_name, birthday, gender, country, state, city,
+            email, phone, preferred_language, password_hash, account_status, supporter_type,
+            source_event_id, last_login_at, registration_date
+          ) VALUES (?, 'Demo', 'Donor', NULL, 'PREFER_NOT_TO_SAY', 'China', NULL, 'Shanghai', ?, NULL, 'en', ?, 'ACTIVE', 'DONOR', NULL, NOW(), CURRENT_DATE())`,
+          [generateCode("DON"), email, demoHash],
+        );
+      }
+    }
+
     const [rows] = await connection.query(
       `SELECT id, donor_code, first_name, last_name, email, password_hash, supporter_type, account_status
        FROM donors
@@ -1249,6 +1286,734 @@ async function getEmployeeDashboard(request, env) {
   }
 }
 
+async function listEmployees(env) {
+  const connection = await connect(env);
+
+  try {
+    const [rows] = await connection.query(
+      `SELECT e.id, e.employee_code, e.name, e.email, e.gender, e.birthday, e.contact, e.schedule,
+              e.hometown, e.position, e.role, e.status, e.created_at, e.password_hash,
+              (SELECT COUNT(*) FROM schedules s WHERE s.employee_id = e.id) AS schedules_count,
+              (SELECT COUNT(*) FROM donation_receivables dr WHERE dr.employee_id = e.id) AS donations_count,
+              (SELECT COUNT(*) FROM events ev WHERE ev.employee_id = e.id) AS events_count,
+              (SELECT COUNT(*) FROM invoices i WHERE i.employee_id = e.id) AS invoices_count
+       FROM employees e
+       ORDER BY e.id ASC`,
+    );
+
+    return success({
+      message: "Employees retrieved.",
+      data: {
+        items: (rows || []).map((row) => ({
+          id: row.id,
+          employeeCode: row.employee_code,
+          name: row.name,
+          email: row.email,
+          gender: row.gender,
+          maritalStatus: "PREFER_NOT_TO_SAY",
+          birthday: row.birthday,
+          contact: row.contact,
+          schedule: row.schedule,
+          hometown: row.hometown,
+          position: row.position,
+          role: row.role,
+          status: row.status,
+          createdAt: row.created_at,
+          passwordConfigured: Boolean(row.password_hash),
+          _count: {
+            schedules: Number(row.schedules_count || 0),
+            donations: Number(row.donations_count || 0),
+            events: Number(row.events_count || 0),
+            invoices: Number(row.invoices_count || 0),
+          },
+        })),
+      },
+    });
+  } finally {
+    await connection.end();
+  }
+}
+
+async function listSchedules(env) {
+  const connection = await connect(env);
+
+  try {
+    const [rows] = await connection.query(
+      `SELECT s.id, s.employee_id, s.event_id, s.shift_date, s.start_time, s.end_time, s.status, s.notes,
+              e.name AS employee_name,
+              ev.event_name
+       FROM schedules s
+       LEFT JOIN employees e ON e.id = s.employee_id
+       LEFT JOIN events ev ON ev.id = s.event_id
+       ORDER BY s.shift_date ASC, s.start_time ASC, s.id ASC`,
+    );
+
+    return success({
+      message: "Schedules retrieved.",
+      data: {
+        items: (rows || []).map((row) => ({
+          id: row.id,
+          employeeId: row.employee_id,
+          eventId: row.event_id,
+          shiftDate: row.shift_date,
+          startTime: row.start_time,
+          endTime: row.end_time,
+          status: row.status,
+          notes: row.notes,
+          employee: row.employee_name ? { name: row.employee_name } : null,
+          event: row.event_name ? { eventName: row.event_name } : null,
+        })),
+      },
+    });
+  } finally {
+    await connection.end();
+  }
+}
+
+async function listDonors(env) {
+  const connection = await connect(env);
+
+  try {
+    const [rows] = await connection.query(
+      `SELECT d.id, d.donor_code, d.first_name, d.last_name, d.birthday, d.gender, d.country, d.state, d.city,
+              d.street_address, d.postal_code, d.email, d.phone, d.preferred_language, d.account_status,
+              d.supporter_type, d.registration_date, e.id AS source_event_id, e.event_name AS source_event_name
+       FROM donors d
+       LEFT JOIN events e ON e.id = d.source_event_id
+       ORDER BY d.id ASC`,
+    );
+
+    return success({
+      message: "Donors retrieved.",
+      data: {
+        items: (rows || []).map((row) => ({
+          id: row.id,
+          donorCode: row.donor_code,
+          firstName: row.first_name,
+          lastName: row.last_name,
+          birthday: row.birthday,
+          gender: row.gender,
+          maritalStatus: "PREFER_NOT_TO_SAY",
+          country: row.country,
+          state: row.state,
+          city: row.city,
+          streetAddress: row.street_address,
+          postalCode: row.postal_code,
+          email: row.email,
+          phone: row.phone,
+          preferredLanguage: row.preferred_language,
+          accountStatus: row.account_status,
+          supporterType: row.supporter_type,
+          registrationDate: row.registration_date,
+          sourceEvent: row.source_event_id
+            ? { id: row.source_event_id, eventName: row.source_event_name }
+            : null,
+        })),
+      },
+    });
+  } finally {
+    await connection.end();
+  }
+}
+
+async function listDonationReceivables(env) {
+  const connection = await connect(env);
+
+  try {
+    const [rows] = await connection.query(
+      `SELECT dr.id, dr.donation_code, dr.donation_amount, dr.donation_date, dr.donation_frequency, dr.status, dr.notes,
+              d.id AS donor_id, d.first_name, d.last_name,
+              ev.id AS event_id, ev.event_name,
+              dk.id AS kit_id, dk.kit_name,
+              e.id AS employee_id, e.name AS employee_name
+       FROM donation_receivables dr
+       LEFT JOIN donors d ON d.id = dr.donor_id
+       LEFT JOIN events ev ON ev.id = dr.event_id
+       LEFT JOIN donation_kits dk ON dk.id = dr.donation_kit_id
+       LEFT JOIN employees e ON e.id = dr.employee_id
+       ORDER BY dr.donation_date DESC, dr.id DESC`,
+    );
+
+    return success({
+      message: "Donations retrieved.",
+      data: {
+        items: (rows || []).map((row) => ({
+          id: row.id,
+          donationCode: row.donation_code,
+          donationAmount: row.donation_amount,
+          donationDate: row.donation_date,
+          donationFrequency: row.donation_frequency,
+          status: row.status,
+          notes: row.notes,
+          donor: row.donor_id
+            ? {
+                id: row.donor_id,
+                firstName: row.first_name,
+                lastName: row.last_name,
+              }
+            : null,
+          event: row.event_id ? { id: row.event_id, eventName: row.event_name } : null,
+          donationKit: row.kit_id ? { id: row.kit_id, kitName: row.kit_name } : null,
+          employee: row.employee_id ? { id: row.employee_id, name: row.employee_name } : null,
+        })),
+      },
+    });
+  } finally {
+    await connection.end();
+  }
+}
+
+async function listReceipts(env) {
+  const connection = await connect(env);
+
+  try {
+    const [rows] = await connection.query(
+      `SELECT r.id, r.receipt_number, r.donation_id, r.amount, r.receipt_date, r.payment_method, r.transaction_id, r.status, r.notes,
+              dr.donation_code,
+              d.first_name, d.last_name
+       FROM donation_receipts r
+       LEFT JOIN donation_receivables dr ON dr.id = r.donation_id
+       LEFT JOIN donors d ON d.id = dr.donor_id
+       ORDER BY r.receipt_date DESC, r.id DESC`,
+    );
+
+    return success({
+      message: "Receipts retrieved.",
+      data: {
+        items: (rows || []).map((row) => ({
+          id: row.id,
+          receiptNumber: row.receipt_number,
+          donationId: row.donation_id,
+          amount: row.amount,
+          receiptDate: row.receipt_date,
+          paymentMethod: row.payment_method,
+          transactionId: row.transaction_id,
+          status: row.status,
+          notes: row.notes,
+          donation: row.donation_id
+            ? {
+                donationCode: row.donation_code,
+                donor: row.first_name ? { firstName: row.first_name, lastName: row.last_name } : null,
+              }
+            : null,
+        })),
+      },
+    });
+  } finally {
+    await connection.end();
+  }
+}
+
+async function listShippings(env) {
+  const connection = await connect(env);
+
+  try {
+    const [rows] = await connection.query(
+      `SELECT s.id, s.donation_id, s.tracking_number, s.carrier, s.shipped_date, s.delivery_date, s.shipping_cost, s.status,
+              dr.donation_code,
+              d.first_name, d.last_name
+       FROM shippings s
+       LEFT JOIN donation_receivables dr ON dr.id = s.donation_id
+       LEFT JOIN donors d ON d.id = dr.donor_id
+       ORDER BY s.id DESC`,
+    );
+
+    return success({
+      message: "Shipping records retrieved.",
+      data: {
+        items: (rows || []).map((row) => ({
+          id: row.id,
+          donationId: row.donation_id,
+          trackingNumber: row.tracking_number,
+          carrier: row.carrier,
+          shippedDate: row.shipped_date,
+          deliveryDate: row.delivery_date,
+          shippingCost: row.shipping_cost,
+          status: row.status,
+          donation: row.donation_id
+            ? {
+                donationCode: row.donation_code,
+                donor: row.first_name ? { firstName: row.first_name, lastName: row.last_name } : null,
+              }
+            : null,
+        })),
+      },
+    });
+  } finally {
+    await connection.end();
+  }
+}
+
+async function listFeedback(env) {
+  const connection = await connect(env);
+
+  try {
+    const [rows] = await connection.query(
+      `SELECT f.id, f.donation_id, f.feedback_content, f.rating, f.feedback_date, f.response_content, f.response_date, f.status,
+              dr.donation_code,
+              d.first_name, d.last_name
+       FROM feedback f
+       LEFT JOIN donation_receivables dr ON dr.id = f.donation_id
+       LEFT JOIN donors d ON d.id = dr.donor_id
+       ORDER BY f.feedback_date DESC, f.id DESC`,
+    );
+
+    return success({
+      message: "Feedback records retrieved.",
+      data: {
+        items: (rows || []).map((row) => ({
+          id: row.id,
+          donationId: row.donation_id,
+          feedbackContent: row.feedback_content,
+          rating: row.rating,
+          feedbackDate: row.feedback_date,
+          responseContent: row.response_content,
+          responseDate: row.response_date,
+          status: row.status,
+          donation: row.donation_id
+            ? {
+                donationCode: row.donation_code,
+                donor: row.first_name ? { firstName: row.first_name, lastName: row.last_name } : null,
+              }
+            : null,
+        })),
+      },
+    });
+  } finally {
+    await connection.end();
+  }
+}
+
+async function listDonationKits(env) {
+  const connection = await connect(env);
+
+  try {
+    const [kitRows] = await connection.query(
+      `SELECT id, kit_code, kit_name, description, is_active
+       FROM donation_kits
+       ORDER BY id ASC`,
+    );
+    const [componentRows] = await connection.query(
+      `SELECT kc.id, kc.donation_kit_id, kc.quantity,
+              b.unit_cost AS book_unit_cost,
+              env.unit_cost AS envelope_unit_cost,
+              bx.unit_cost AS box_unit_cost
+       FROM kit_components kc
+       LEFT JOIN books b ON b.id = kc.book_id
+       LEFT JOIN envelopes env ON env.id = kc.envelope_id
+       LEFT JOIN boxes bx ON bx.id = kc.box_id`,
+    );
+
+    const componentMap = new Map();
+    for (const row of componentRows || []) {
+      const current = componentMap.get(row.donation_kit_id) || [];
+      current.push({
+        quantity: row.quantity,
+        book: row.book_unit_cost != null ? { unitCost: row.book_unit_cost } : null,
+        envelope: row.envelope_unit_cost != null ? { unitCost: row.envelope_unit_cost } : null,
+        box: row.box_unit_cost != null ? { unitCost: row.box_unit_cost } : null,
+      });
+      componentMap.set(row.donation_kit_id, current);
+    }
+
+    return success({
+      message: "Donation kits retrieved.",
+      data: {
+        items: (kitRows || []).map((row) => ({
+          id: row.id,
+          kitCode: row.kit_code,
+          kitName: row.kit_name,
+          description: row.description,
+          isActive: Boolean(row.is_active),
+          components: componentMap.get(row.id) || [],
+        })),
+      },
+    });
+  } finally {
+    await connection.end();
+  }
+}
+
+async function listBooks(env) {
+  const connection = await connect(env);
+
+  try {
+    const [rows] = await connection.query(
+      `SELECT b.id, b.press_id, b.book_series_id, b.book_format_id, b.title, b.description, b.page_count,
+              b.unit_cost, b.current_stock, b.reorder_level, b.publication_date,
+              p.press_name, bs.series_name, bf.format_type, bf.language
+       FROM books b
+       LEFT JOIN presses p ON p.id = b.press_id
+       LEFT JOIN book_series bs ON bs.id = b.book_series_id
+       LEFT JOIN book_formats bf ON bf.id = b.book_format_id
+       ORDER BY b.id ASC`,
+    );
+
+    return success({
+      message: "Books retrieved.",
+      data: {
+        items: (rows || []).map((row) => ({
+          id: row.id,
+          pressId: row.press_id,
+          bookSeriesId: row.book_series_id,
+          bookFormatId: row.book_format_id,
+          title: row.title,
+          description: row.description,
+          pageCount: row.page_count,
+          unitCost: row.unit_cost,
+          currentStock: row.current_stock,
+          reorderLevel: row.reorder_level,
+          publicationDate: row.publication_date,
+          press: row.press_name ? { pressName: row.press_name } : null,
+          bookSeries: row.series_name ? { seriesName: row.series_name } : null,
+          bookFormat: row.format_type ? { formatType: row.format_type, language: row.language } : null,
+        })),
+      },
+    });
+  } finally {
+    await connection.end();
+  }
+}
+
+async function listEnvelopes(env) {
+  const connection = await connect(env);
+
+  try {
+    const [rows] = await connection.query(
+      `SELECT id, envelope_code, size, unit_cost, current_stock, reorder_level, description, last_restock_date, is_active
+       FROM envelopes
+       ORDER BY id ASC`,
+    );
+
+    return success({
+      message: "Envelopes retrieved.",
+      data: {
+        items: (rows || []).map((row) => ({
+          id: row.id,
+          envelopeCode: row.envelope_code,
+          size: row.size,
+          unitCost: row.unit_cost,
+          currentStock: row.current_stock,
+          reorderLevel: row.reorder_level,
+          description: row.description,
+          lastRestockDate: row.last_restock_date,
+          isActive: Boolean(row.is_active),
+        })),
+      },
+    });
+  } finally {
+    await connection.end();
+  }
+}
+
+async function listBoxes(env) {
+  const connection = await connect(env);
+
+  try {
+    const [rows] = await connection.query(
+      `SELECT id, box_code, size, unit_cost, current_stock, reorder_level, description, last_restock_date, is_active
+       FROM boxes
+       ORDER BY id ASC`,
+    );
+
+    return success({
+      message: "Boxes retrieved.",
+      data: {
+        items: (rows || []).map((row) => ({
+          id: row.id,
+          boxCode: row.box_code,
+          size: row.size,
+          unitCost: row.unit_cost,
+          currentStock: row.current_stock,
+          reorderLevel: row.reorder_level,
+          description: row.description,
+          lastRestockDate: row.last_restock_date,
+          isActive: Boolean(row.is_active),
+        })),
+      },
+    });
+  } finally {
+    await connection.end();
+  }
+}
+
+async function listPromotionInventory(env) {
+  const connection = await connect(env);
+
+  try {
+    const [rows] = await connection.query(
+      `SELECT id, inventory_code, promotion_inventory_type, size, unit_cost, current_stock, reorder_level,
+              description, last_restock_date, is_active
+       FROM promotion_inventory
+       ORDER BY id ASC`,
+    );
+
+    return success({
+      message: "Promotion inventory retrieved.",
+      data: {
+        items: (rows || []).map((row) => ({
+          id: row.id,
+          inventoryCode: row.inventory_code,
+          promotionInventoryType: row.promotion_inventory_type,
+          size: row.size,
+          unitCost: row.unit_cost,
+          currentStock: row.current_stock,
+          reorderLevel: row.reorder_level,
+          description: row.description,
+          lastRestockDate: row.last_restock_date,
+          isActive: Boolean(row.is_active),
+        })),
+      },
+    });
+  } finally {
+    await connection.end();
+  }
+}
+
+async function listEvents(env) {
+  const connection = await connect(env);
+
+  try {
+    const [rows] = await connection.query(
+      `SELECT ev.id, ev.event_name, ev.description, ev.type, ev.start_date, ev.end_date, ev.country, ev.state, ev.city,
+              ev.employee_id, ev.is_active, e.name AS employee_name
+       FROM events ev
+       LEFT JOIN employees e ON e.id = ev.employee_id
+       ORDER BY ev.start_date DESC, ev.id DESC`,
+    );
+
+    return success({
+      message: "Events retrieved.",
+      data: {
+        items: (rows || []).map((row) => ({
+          id: row.id,
+          eventName: row.event_name,
+          description: row.description,
+          type: row.type,
+          startDate: row.start_date,
+          endDate: row.end_date,
+          country: row.country,
+          state: row.state,
+          city: row.city,
+          employeeId: row.employee_id,
+          isActive: Boolean(row.is_active),
+          employee: row.employee_name ? { name: row.employee_name } : null,
+        })),
+      },
+    });
+  } finally {
+    await connection.end();
+  }
+}
+
+async function listPromotionAssets(env) {
+  const connection = await connect(env);
+
+  try {
+    const [rows] = await connection.query(
+      `SELECT id, asset_code, asset_category, asset_name, description, asset_type, is_active
+       FROM promotion_assets
+       ORDER BY id ASC`,
+    );
+
+    return success({
+      message: "Promotion assets retrieved.",
+      data: {
+        items: (rows || []).map((row) => ({
+          id: row.id,
+          assetCode: row.asset_code,
+          assetCategory: row.asset_category,
+          assetName: row.asset_name,
+          description: row.description,
+          assetType: row.asset_type,
+          isActive: Boolean(row.is_active),
+        })),
+      },
+    });
+  } finally {
+    await connection.end();
+  }
+}
+
+async function listVendors(env) {
+  const connection = await connect(env);
+
+  try {
+    const [rows] = await connection.query(
+      `SELECT id, vendor_code, name, contact_person, phone_number, address, email, rating, supply_type, last_supply_date, is_active
+       FROM vendors
+       ORDER BY id ASC`,
+    );
+
+    return success({
+      message: "Vendors retrieved.",
+      data: {
+        items: (rows || []).map((row) => ({
+          id: row.id,
+          vendorCode: row.vendor_code,
+          name: row.name,
+          contactPerson: row.contact_person,
+          phoneNumber: row.phone_number,
+          address: row.address,
+          email: row.email,
+          rating: row.rating,
+          supplyType: row.supply_type,
+          lastSupplyDate: row.last_supply_date,
+          isActive: Boolean(row.is_active),
+        })),
+      },
+    });
+  } finally {
+    await connection.end();
+  }
+}
+
+async function listInvoices(env) {
+  const connection = await connect(env);
+
+  try {
+    const [invoiceRows] = await connection.query(
+      `SELECT i.id, i.invoice_number, i.employee_id, i.invoice_date, i.due_date, i.vendor_id, i.status, i.notes,
+              i.subtotal, i.tax_amount, i.total_amount,
+              e.name AS employee_name,
+              v.name AS vendor_name
+       FROM invoices i
+       LEFT JOIN employees e ON e.id = i.employee_id
+       LEFT JOIN vendors v ON v.id = i.vendor_id
+       ORDER BY i.invoice_date DESC, i.id DESC`,
+    );
+    const [itemRows] = await connection.query(
+      `SELECT ii.id, ii.invoice_id, ii.envelope_id, ii.box_id, ii.promotion_inventory_id, ii.description, ii.quantity, ii.unit_price, ii.amount,
+              env.envelope_code, bx.box_code, pi.inventory_code
+       FROM invoice_items ii
+       LEFT JOIN envelopes env ON env.id = ii.envelope_id
+       LEFT JOIN boxes bx ON bx.id = ii.box_id
+       LEFT JOIN promotion_inventory pi ON pi.id = ii.promotion_inventory_id`,
+    );
+
+    const itemMap = new Map();
+    for (const row of itemRows || []) {
+      const current = itemMap.get(row.invoice_id) || [];
+      current.push({
+        id: row.id,
+        description: row.description,
+        quantity: row.quantity,
+        unitPrice: row.unit_price,
+        amount: row.amount,
+        envelope: row.envelope_id ? { envelopeCode: row.envelope_code } : null,
+        box: row.box_id ? { boxCode: row.box_code } : null,
+        promotionInventory: row.promotion_inventory_id ? { inventoryCode: row.inventory_code } : null,
+      });
+      itemMap.set(row.invoice_id, current);
+    }
+
+    return success({
+      message: "Invoices retrieved.",
+      data: {
+        items: (invoiceRows || []).map((row) => ({
+          id: row.id,
+          invoiceNumber: row.invoice_number,
+          employeeId: row.employee_id,
+          invoiceDate: row.invoice_date,
+          dueDate: row.due_date,
+          vendorId: row.vendor_id,
+          status: row.status,
+          notes: row.notes,
+          subtotal: row.subtotal,
+          taxAmount: row.tax_amount,
+          totalAmount: row.total_amount,
+          employee: row.employee_id ? { name: row.employee_name } : null,
+          vendor: row.vendor_id ? { name: row.vendor_name } : null,
+          items: itemMap.get(row.id) || [],
+        })),
+      },
+    });
+  } finally {
+    await connection.end();
+  }
+}
+
+async function listPayables(env) {
+  const connection = await connect(env);
+
+  try {
+    const [rows] = await connection.query(
+      `SELECT p.id, p.invoice_id, p.remaining_amount, p.due_date, p.payment_terms, p.notes, p.status,
+              i.invoice_number, v.name AS vendor_name
+       FROM payables p
+       LEFT JOIN invoices i ON i.id = p.invoice_id
+       LEFT JOIN vendors v ON v.id = i.vendor_id
+       ORDER BY p.due_date ASC, p.id ASC`,
+    );
+
+    return success({
+      message: "Payables retrieved.",
+      data: {
+        items: (rows || []).map((row) => ({
+          id: row.id,
+          invoiceId: row.invoice_id,
+          remainingAmount: row.remaining_amount,
+          dueDate: row.due_date,
+          paymentTerms: row.payment_terms,
+          notes: row.notes,
+          status: row.status,
+          invoice: row.invoice_id
+            ? {
+                invoiceNumber: row.invoice_number,
+                vendor: row.vendor_name ? { name: row.vendor_name } : null,
+              }
+            : null,
+        })),
+      },
+    });
+  } finally {
+    await connection.end();
+  }
+}
+
+async function listPayments(env) {
+  const connection = await connect(env);
+
+  try {
+    const [rows] = await connection.query(
+      `SELECT ip.id, ip.payable_id, ip.amount, ip.payment_date, ip.payment_method, ip.reference_number, ip.notes,
+              p.invoice_id, i.invoice_number, v.name AS vendor_name
+       FROM invoice_payments ip
+       LEFT JOIN payables p ON p.id = ip.payable_id
+       LEFT JOIN invoices i ON i.id = p.invoice_id
+       LEFT JOIN vendors v ON v.id = i.vendor_id
+       ORDER BY ip.payment_date DESC, ip.id DESC`,
+    );
+
+    return success({
+      message: "Payments retrieved.",
+      data: {
+        items: (rows || []).map((row) => ({
+          id: row.id,
+          payableId: row.payable_id,
+          amount: row.amount,
+          paymentDate: row.payment_date,
+          paymentMethod: row.payment_method,
+          referenceNumber: row.reference_number,
+          notes: row.notes,
+          payable: row.payable_id
+            ? {
+                invoice: row.invoice_id
+                  ? {
+                      invoiceNumber: row.invoice_number,
+                      vendor: row.vendor_name ? { name: row.vendor_name } : null,
+                    }
+                  : null,
+              }
+            : null,
+        })),
+      },
+    });
+  } finally {
+    await connection.end();
+  }
+}
+
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
@@ -1335,6 +2100,78 @@ export default {
         return await getDashboardAnalytics(env);
       }
 
+      if (url.pathname === "/api/employees" && request.method === "GET") {
+        return await listEmployees(env);
+      }
+
+      if (url.pathname === "/api/schedules" && request.method === "GET") {
+        return await listSchedules(env);
+      }
+
+      if (url.pathname === "/api/donors" && request.method === "GET") {
+        return await listDonors(env);
+      }
+
+      if (url.pathname === "/api/donation-receivables" && request.method === "GET") {
+        return await listDonationReceivables(env);
+      }
+
+      if (url.pathname === "/api/receipts" && request.method === "GET") {
+        return await listReceipts(env);
+      }
+
+      if (url.pathname === "/api/shippings" && request.method === "GET") {
+        return await listShippings(env);
+      }
+
+      if (url.pathname === "/api/feedback" && request.method === "GET") {
+        return await listFeedback(env);
+      }
+
+      if (url.pathname === "/api/donation-kits" && request.method === "GET") {
+        return await listDonationKits(env);
+      }
+
+      if (url.pathname === "/api/books" && request.method === "GET") {
+        return await listBooks(env);
+      }
+
+      if (url.pathname === "/api/envelopes" && request.method === "GET") {
+        return await listEnvelopes(env);
+      }
+
+      if (url.pathname === "/api/boxes" && request.method === "GET") {
+        return await listBoxes(env);
+      }
+
+      if (url.pathname === "/api/promotion-inventory" && request.method === "GET") {
+        return await listPromotionInventory(env);
+      }
+
+      if (url.pathname === "/api/events" && request.method === "GET") {
+        return await listEvents(env);
+      }
+
+      if (url.pathname === "/api/promotion-assets" && request.method === "GET") {
+        return await listPromotionAssets(env);
+      }
+
+      if (url.pathname === "/api/vendors" && request.method === "GET") {
+        return await listVendors(env);
+      }
+
+      if (url.pathname === "/api/invoices" && request.method === "GET") {
+        return await listInvoices(env);
+      }
+
+      if (url.pathname === "/api/payables" && request.method === "GET") {
+        return await listPayables(env);
+      }
+
+      if (url.pathname === "/api/payments" && request.method === "GET") {
+        return await listPayments(env);
+      }
+
       if (url.pathname === "/api/public/events" && request.method === "GET") {
         return await listPublicEvents(env);
       }
@@ -1392,6 +2229,24 @@ export default {
           "/api/health/donations-count",
           "/api/health/summary",
           "/api/dashboard/analytics",
+          "/api/employees",
+          "/api/schedules",
+          "/api/donors",
+          "/api/donation-receivables",
+          "/api/receipts",
+          "/api/shippings",
+          "/api/feedback",
+          "/api/donation-kits",
+          "/api/books",
+          "/api/envelopes",
+          "/api/boxes",
+          "/api/promotion-inventory",
+          "/api/events",
+          "/api/promotion-assets",
+          "/api/vendors",
+          "/api/invoices",
+          "/api/payables",
+          "/api/payments",
           "/api/public/events",
           "/api/auth/login",
           "/api/donor-auth/register",
