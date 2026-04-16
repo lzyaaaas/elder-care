@@ -2014,9 +2014,205 @@ async function listPayments(env) {
   }
 }
 
+const adminAnalyticsAttributeMap = {
+  employees: [
+    {
+      key: "role",
+      label: "Role",
+      type: "enum",
+      operators: ["equals", "in"],
+      options: [
+        { value: "ADMIN", label: "Admin" },
+        { value: "OPERATIONS", label: "Operations" },
+        { value: "FINANCE", label: "Finance" },
+        { value: "EVENT", label: "Event" },
+        { value: "VOLUNTEER", label: "Volunteer" },
+      ],
+    },
+    {
+      key: "status",
+      label: "Status",
+      type: "enum",
+      operators: ["equals", "in"],
+      options: [
+        { value: "ACTIVE", label: "Active" },
+        { value: "INACTIVE", label: "Inactive" },
+      ],
+    },
+  ],
+  schedules: [],
+  donors: [
+    {
+      key: "gender",
+      label: "Gender",
+      type: "enum",
+      operators: ["equals", "in"],
+      options: [
+        { value: "FEMALE", label: "Female" },
+        { value: "MALE", label: "Male" },
+        { value: "NON_BINARY", label: "Non-binary" },
+        { value: "PREFER_NOT_TO_SAY", label: "Prefer not to say" },
+      ],
+    },
+    {
+      key: "accountStatus",
+      label: "Account Status",
+      type: "enum",
+      operators: ["equals", "in"],
+      options: [
+        { value: "ACTIVE", label: "Active" },
+        { value: "INACTIVE", label: "Inactive" },
+      ],
+    },
+  ],
+  donations: [],
+  receipts: [],
+  shipping: [],
+  feedback: [],
+  "donation-kits": [],
+  books: [],
+  envelopes: [],
+  boxes: [],
+  "promotion-inventory": [],
+  events: [],
+  "promotion-assets": [],
+  vendors: [],
+  invoices: [],
+  payables: [],
+  payments: [],
+};
+
+async function getAdminModuleItems(moduleKey, env) {
+  const routeMap = {
+    employees: listEmployees,
+    schedules: listSchedules,
+    donors: listDonors,
+    donations: listDonationReceivables,
+    receipts: listReceipts,
+    shipping: listShippings,
+    feedback: listFeedback,
+    "donation-kits": listDonationKits,
+    books: listBooks,
+    envelopes: listEnvelopes,
+    boxes: listBoxes,
+    "promotion-inventory": listPromotionInventory,
+    events: listEvents,
+    "promotion-assets": listPromotionAssets,
+    vendors: listVendors,
+    invoices: listInvoices,
+    payables: listPayables,
+    payments: listPayments,
+  };
+
+  const handler = routeMap[moduleKey];
+
+  if (!handler) {
+    throw Object.assign(new Error("Unknown analytics module."), {
+      statusCode: 404,
+    });
+  }
+
+  const response = await handler(env);
+  const payload = await response.json();
+
+  if (!payload?.success) {
+    throw Object.assign(new Error(payload?.message || "Analytics source failed."), {
+      statusCode: 500,
+    });
+  }
+
+  return payload.data?.items || [];
+}
+
+function buildAdminAnalyticsSummary(items, filters, moduleKey) {
+  return {
+    filteredTotal: items.length,
+    sourceTotal: items.length,
+    activeFilters: Array.isArray(filters) ? filters.length : 0,
+    availableAttributes: (adminAnalyticsAttributeMap[moduleKey] || []).length,
+  };
+}
+
+function buildAdminAnalyticsCharts(items, moduleKey) {
+  if (moduleKey === "donors") {
+    const grouped = items.reduce((accumulator, item) => {
+      const label = item.gender || "Unknown";
+      accumulator[label] = (accumulator[label] || 0) + 1;
+      return accumulator;
+    }, {});
+
+    return [
+      {
+        key: "gender-distribution",
+        type: "horizontal-bar",
+        title: "Gender distribution",
+        items: Object.entries(grouped).map(([label, value]) => ({ label, value })),
+      },
+    ];
+  }
+
+  if (moduleKey === "donations") {
+    const grouped = items.reduce((accumulator, item) => {
+      const label = item.status || "Unknown";
+      accumulator[label] = (accumulator[label] || 0) + 1;
+      return accumulator;
+    }, {});
+
+    return [
+      {
+        key: "donation-status",
+        type: "horizontal-bar",
+        title: "Donation status",
+        items: Object.entries(grouped).map(([label, value]) => ({ label, value })),
+      },
+    ];
+  }
+
+  if (moduleKey === "events") {
+    return [
+      {
+        key: "events-timeline",
+        type: "line",
+        title: "Events loaded",
+        items: items.map((item, index) => ({
+          label: item.eventName || item.name || `Event ${index + 1}`,
+          value: index + 1,
+        })),
+      },
+    ];
+  }
+
+  return [];
+}
+
+async function getAdminAnalyticsMetadata(moduleKey) {
+  return success({
+    message: "Analytics metadata retrieved.",
+    data: {
+      attributes: adminAnalyticsAttributeMap[moduleKey] || [],
+    },
+  });
+}
+
+async function queryAdminAnalytics(moduleKey, request, env) {
+  const body = await readBody(request);
+  const filters = Array.isArray(body?.filters) ? body.filters : [];
+  const items = await getAdminModuleItems(moduleKey, env);
+
+  return success({
+    message: "Analytics query completed.",
+    data: {
+      items,
+      summary: buildAdminAnalyticsSummary(items, filters, moduleKey),
+      charts: buildAdminAnalyticsCharts(items, moduleKey),
+    },
+  });
+}
+
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
+    const analyticsMatch = url.pathname.match(/^\/api\/admin-analytics\/([^/]+)\/(metadata|query)$/);
 
     if (request.method === "OPTIONS") {
       return new Response(null, {
@@ -2026,6 +2222,14 @@ export default {
     }
 
     try {
+      if (analyticsMatch && request.method === "GET" && analyticsMatch[2] === "metadata") {
+        return await getAdminAnalyticsMetadata(analyticsMatch[1]);
+      }
+
+      if (analyticsMatch && request.method === "POST" && analyticsMatch[2] === "query") {
+        return await queryAdminAnalytics(analyticsMatch[1], request, env);
+      }
+
       if (url.pathname === "/" || url.pathname === "/api/health") {
         return json({
           success: true,
@@ -2229,6 +2433,8 @@ export default {
           "/api/health/donations-count",
           "/api/health/summary",
           "/api/dashboard/analytics",
+          "/api/admin-analytics/:moduleKey/metadata",
+          "/api/admin-analytics/:moduleKey/query",
           "/api/employees",
           "/api/schedules",
           "/api/donors",
