@@ -2503,9 +2503,9 @@ function buildAdminAnalyticsCharts(items, moduleKey) {
     return [
       {
         key: "gender-distribution",
-        type: "horizontal-bar",
+        kind: "bar",
         title: "Gender distribution",
-        items: Object.entries(grouped).map(([label, value]) => ({ label, value })),
+        data: Object.entries(grouped).map(([label, value]) => ({ label, value })),
       },
     ];
   }
@@ -2520,9 +2520,9 @@ function buildAdminAnalyticsCharts(items, moduleKey) {
     return [
       {
         key: "donation-status",
-        type: "horizontal-bar",
+        kind: "bar",
         title: "Donation status",
-        items: Object.entries(grouped).map(([label, value]) => ({ label, value })),
+        data: Object.entries(grouped).map(([label, value]) => ({ label, value })),
       },
     ];
   }
@@ -2531,9 +2531,9 @@ function buildAdminAnalyticsCharts(items, moduleKey) {
     return [
       {
         key: "events-timeline",
-        type: "line",
+        kind: "line",
         title: "Events loaded",
-        items: items.map((item, index) => ({
+        data: items.map((item, index) => ({
           label: item.eventName || item.name || `Event ${index + 1}`,
           value: index + 1,
         })),
