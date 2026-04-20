@@ -970,7 +970,7 @@ export const adminModuleConfig = {
       deleteEndpoint: (id) => `/employees/${id}`,
     },
     analytics: {
-      enabled: false,
+      enabled: true,
     },
     formFields: [
       { key: "employeeCode", label: "Employee Code", type: "text" },
@@ -1030,7 +1030,7 @@ export const adminModuleConfig = {
       deleteEndpoint: (id) => `/schedules/${id}`,
     },
     analytics: {
-      enabled: false,
+      enabled: true,
     },
     formFields: [
       { key: "employeeId", label: "Employee ID", type: "number", required: true },
@@ -1068,7 +1068,7 @@ export const adminModuleConfig = {
       mapData: liveDonorLoader,
     },
     analytics: {
-      enabled: false,
+      enabled: true,
     },
   },
   donations: {
@@ -1091,7 +1091,7 @@ export const adminModuleConfig = {
       mapData: liveDonationLoader,
     },
     analytics: {
-      enabled: false,
+      enabled: true,
     },
   },
   receipts: {
@@ -1116,7 +1116,7 @@ export const adminModuleConfig = {
       deleteEndpoint: (id) => `/receipts/${id}`,
     },
     analytics: {
-      enabled: false,
+      enabled: true,
     },
     formFields: [
       { key: "receiptNumber", label: "Receipt Number", type: "text" },
@@ -1162,7 +1162,7 @@ export const adminModuleConfig = {
       deleteEndpoint: (id) => `/shippings/${id}`,
     },
     analytics: {
-      enabled: false,
+      enabled: true,
     },
     formFields: [
       { key: "donationId", label: "Donation ID", type: "number", required: true },
@@ -1200,7 +1200,7 @@ export const adminModuleConfig = {
       deleteEndpoint: (id) => `/feedback/${id}`,
     },
     analytics: {
-      enabled: false,
+      enabled: true,
     },
     formFields: [
       { key: "donationId", label: "Donation ID", type: "number", required: true },
@@ -1238,7 +1238,7 @@ export const adminModuleConfig = {
       deleteEndpoint: (id) => `/donation-kits/${id}`,
     },
     analytics: {
-      enabled: false,
+      enabled: true,
     },
     formFields: [
       { key: "kitCode", label: "Kit Code", type: "text" },
@@ -1269,7 +1269,7 @@ export const adminModuleConfig = {
       deleteEndpoint: (id) => `/books/${id}`,
     },
     analytics: {
-      enabled: false,
+      enabled: true,
     },
     formFields: [
       { key: "pressId", label: "Press ID", type: "number", required: true },
@@ -1306,7 +1306,7 @@ export const adminModuleConfig = {
       deleteEndpoint: (id) => `/envelopes/${id}`,
     },
     analytics: {
-      enabled: false,
+      enabled: true,
     },
     formFields: [
       { key: "envelopeCode", label: "Envelope Code", type: "text" },
@@ -1341,7 +1341,7 @@ export const adminModuleConfig = {
       deleteEndpoint: (id) => `/boxes/${id}`,
     },
     analytics: {
-      enabled: false,
+      enabled: true,
     },
     formFields: [
       { key: "boxCode", label: "Box Code", type: "text" },
@@ -1376,7 +1376,7 @@ export const adminModuleConfig = {
       deleteEndpoint: (id) => `/promotion-inventory/${id}`,
     },
     analytics: {
-      enabled: false,
+      enabled: true,
     },
     formFields: [
       { key: "inventoryCode", label: "Inventory Code", type: "text" },
@@ -1412,7 +1412,7 @@ export const adminModuleConfig = {
       deleteEndpoint: (id) => `/events/${id}`,
     },
     analytics: {
-      enabled: false,
+      enabled: true,
     },
     formFields: [
       { key: "eventName", label: "Event Name", type: "text", required: true },
@@ -1453,7 +1453,7 @@ export const adminModuleConfig = {
       deleteEndpoint: (id) => `/promotion-assets/${id}`,
     },
     analytics: {
-      enabled: false,
+      enabled: true,
     },
     formFields: [
       { key: "assetCode", label: "Asset Code", type: "text" },
@@ -1496,7 +1496,7 @@ export const adminModuleConfig = {
       deleteEndpoint: (id) => `/vendors/${id}`,
     },
     analytics: {
-      enabled: false,
+      enabled: true,
     },
     formFields: [
       { key: "vendorCode", label: "Vendor Code", type: "text" },
@@ -1533,7 +1533,7 @@ export const adminModuleConfig = {
       deleteEndpoint: (id) => `/invoices/${id}`,
     },
     analytics: {
-      enabled: false,
+      enabled: true,
     },
     formFields: [
       { key: "invoiceNumber", label: "Invoice Number", type: "text" },
@@ -1575,7 +1575,7 @@ export const adminModuleConfig = {
       deleteEndpoint: (id) => `/payables/${id}`,
     },
     analytics: {
-      enabled: false,
+      enabled: true,
     },
     formFields: [
       { key: "invoiceId", label: "Invoice ID", type: "number", required: true },
@@ -1613,7 +1613,7 @@ export const adminModuleConfig = {
       deleteEndpoint: (id) => `/payments/${id}`,
     },
     analytics: {
-      enabled: false,
+      enabled: true,
     },
     formFields: [
       { key: "payableId", label: "Payable ID", type: "number", required: true },
