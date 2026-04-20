@@ -2373,73 +2373,312 @@ async function listPayments(env) {
   }
 }
 
-const adminAnalyticsAttributeMap = {
+function humanizeEnum(value) {
+  return String(value || "")
+    .toLowerCase()
+    .split("_")
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
+}
+
+function calculateAge(value) {
+  if (!value) {
+    return null;
+  }
+
+  const birthday = new Date(value);
+
+  if (Number.isNaN(birthday.getTime())) {
+    return null;
+  }
+
+  const today = new Date();
+  let age = today.getFullYear() - birthday.getFullYear();
+  const monthDiff = today.getMonth() - birthday.getMonth();
+
+  if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birthday.getDate())) {
+    age -= 1;
+  }
+
+  return age;
+}
+
+function uniqueOptions(values) {
+  return [...new Set(values.filter((value) => value !== null && value !== undefined && value !== ""))].map(
+    (value) => ({
+      label: typeof value === "string" ? humanizeEnum(value) : String(value),
+      value: String(value),
+    }),
+  );
+}
+
+function getValueAtPath(item, path) {
+  if (!path) {
+    return null;
+  }
+
+  return path.split(".").reduce((current, key) => {
+    if (current == null) {
+      return null;
+    }
+
+    return current[key];
+  }, item);
+}
+
+function parseDateValue(value) {
+  if (!value) {
+    return null;
+  }
+
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? null : date.getTime();
+}
+
+function parseNumberValue(value) {
+  if (value === null || value === undefined || value === "") {
+    return null;
+  }
+
+  const numericValue = Number(value);
+  return Number.isNaN(numericValue) ? null : numericValue;
+}
+
+function resolveAttributeValue(item, attribute) {
+  const value = typeof attribute.getValue === "function" ? attribute.getValue(item) : getValueAtPath(item, attribute.path);
+
+  if (attribute.type === "number" || attribute.type === "count") {
+    return parseNumberValue(value);
+  }
+
+  if (attribute.type === "date") {
+    return parseDateValue(value);
+  }
+
+  if (attribute.type === "boolean") {
+    return Boolean(value);
+  }
+
+  return value;
+}
+
+function matchesAnalyticsFilter(item, attribute, filter) {
+  const actualValue = resolveAttributeValue(item, attribute);
+  const expectedValue =
+    attribute.type === "number" || attribute.type === "count"
+      ? parseNumberValue(filter.value)
+      : attribute.type === "date"
+        ? parseDateValue(filter.value)
+        : filter.value;
+  const expectedValueTo =
+    attribute.type === "number" || attribute.type === "count"
+      ? parseNumberValue(filter.valueTo)
+      : attribute.type === "date"
+        ? parseDateValue(filter.valueTo)
+        : filter.valueTo;
+
+  switch (filter.operator) {
+    case "equals":
+    case "eq":
+      if (attribute.type === "boolean") {
+        return actualValue === (String(filter.value) === "true");
+      }
+
+      return String(actualValue ?? "").toLowerCase() === String(expectedValue ?? "").toLowerCase();
+    case "contains":
+      return String(actualValue ?? "")
+        .toLowerCase()
+        .includes(String(expectedValue ?? "").toLowerCase());
+    case "in": {
+      const candidates = String(filter.value || "")
+        .split(",")
+        .map((itemValue) => itemValue.trim().toLowerCase())
+        .filter(Boolean);
+      return candidates.includes(String(actualValue ?? "").toLowerCase());
+    }
+    case "gt":
+      return (actualValue ?? -Infinity) > (expectedValue ?? Infinity);
+    case "gte":
+      return (actualValue ?? -Infinity) >= (expectedValue ?? Infinity);
+    case "lt":
+      return (actualValue ?? Infinity) < (expectedValue ?? -Infinity);
+    case "before":
+      return (actualValue ?? Infinity) < (expectedValue ?? -Infinity);
+    case "after":
+      return (actualValue ?? -Infinity) > (expectedValue ?? Infinity);
+    case "between":
+      if (expectedValue == null || expectedValueTo == null || actualValue == null) {
+        return false;
+      }
+
+      return actualValue >= expectedValue && actualValue <= expectedValueTo;
+    default:
+      return true;
+  }
+}
+
+const adminAnalyticsFieldDefinitions = {
   employees: [
-    {
-      key: "role",
-      label: "Role",
-      type: "enum",
-      operators: ["equals", "in"],
-      options: [
-        { value: "ADMIN", label: "Admin" },
-        { value: "OPERATIONS", label: "Operations" },
-        { value: "FINANCE", label: "Finance" },
-        { value: "EVENT", label: "Event" },
-        { value: "VOLUNTEER", label: "Volunteer" },
-      ],
-    },
-    {
-      key: "status",
-      label: "Status",
-      type: "enum",
-      operators: ["equals", "in"],
-      options: [
-        { value: "ACTIVE", label: "Active" },
-        { value: "INACTIVE", label: "Inactive" },
-      ],
-    },
+    { key: "gender", label: "Gender", type: "enum", path: "gender" },
+    { key: "role", label: "Role", type: "enum", path: "role" },
+    { key: "maritalStatus", label: "Marital Status", type: "enum", path: "maritalStatus" },
+    { key: "status", label: "Status", type: "enum", path: "status" },
+    { key: "position", label: "Position", type: "text", path: "position" },
+    { key: "age", label: "Age", type: "number", getValue: (item) => calculateAge(item.birthday) },
+    { key: "schedulesCount", label: "Schedules Count", type: "count", path: "_count.schedules" },
+    { key: "eventsCount", label: "Events Count", type: "count", path: "_count.events" },
   ],
-  schedules: [],
+  schedules: [
+    { key: "status", label: "Status", type: "enum", path: "status" },
+    { key: "shiftDate", label: "Shift Date", type: "date", path: "shiftDate" },
+    { key: "employeeName", label: "Employee", type: "text", path: "employee.name" },
+    { key: "eventName", label: "Event", type: "text", path: "event.eventName" },
+  ],
   donors: [
-    {
-      key: "gender",
-      label: "Gender",
-      type: "enum",
-      operators: ["equals", "in"],
-      options: [
-        { value: "FEMALE", label: "Female" },
-        { value: "MALE", label: "Male" },
-        { value: "NON_BINARY", label: "Non-binary" },
-        { value: "PREFER_NOT_TO_SAY", label: "Prefer not to say" },
-      ],
-    },
-    {
-      key: "accountStatus",
-      label: "Account Status",
-      type: "enum",
-      operators: ["equals", "in"],
-      options: [
-        { value: "ACTIVE", label: "Active" },
-        { value: "INACTIVE", label: "Inactive" },
-      ],
-    },
+    { key: "gender", label: "Gender", type: "enum", path: "gender" },
+    { key: "age", label: "Age", type: "number", getValue: (item) => calculateAge(item.birthday) },
+    { key: "birthday", label: "Birthday", type: "date", path: "birthday" },
+    { key: "city", label: "City", type: "text", path: "city" },
+    { key: "supporterType", label: "Supporter Type", type: "enum", path: "supporterType" },
+    { key: "maritalStatus", label: "Marital Status", type: "enum", path: "maritalStatus" },
+    { key: "accountStatus", label: "Account Status", type: "enum", path: "accountStatus" },
+    { key: "sourceEvent", label: "Source Event", type: "text", path: "sourceEvent.eventName" },
   ],
-  donations: [],
-  receipts: [],
-  shipping: [],
-  feedback: [],
-  "donation-kits": [],
-  books: [],
-  envelopes: [],
-  boxes: [],
-  "promotion-inventory": [],
-  events: [],
-  "promotion-assets": [],
-  vendors: [],
-  invoices: [],
-  payables: [],
-  payments: [],
+  donations: [
+    { key: "status", label: "Status", type: "enum", path: "status" },
+    { key: "donationFrequency", label: "Frequency", type: "enum", path: "donationFrequency" },
+    { key: "donationAmount", label: "Donation Amount", type: "number", path: "donationAmount" },
+    { key: "donationDate", label: "Donation Date", type: "date", path: "donationDate" },
+    { key: "eventName", label: "Event", type: "text", path: "event.eventName" },
+    { key: "employeeName", label: "Donation Owner", type: "text", path: "employee.name" },
+  ],
+  receipts: [
+    { key: "status", label: "Status", type: "enum", path: "status" },
+    { key: "paymentMethod", label: "Payment Method", type: "enum", path: "paymentMethod" },
+    { key: "amount", label: "Amount", type: "number", path: "amount" },
+    { key: "receiptDate", label: "Receipt Date", type: "date", path: "receiptDate" },
+    { key: "donorName", label: "Donor", type: "text", getValue: (item) => item.donation?.donor ? `${item.donation.donor.firstName} ${item.donation.donor.lastName}` : null },
+  ],
+  shipping: [
+    { key: "status", label: "Status", type: "enum", path: "status" },
+    { key: "carrier", label: "Carrier", type: "text", path: "carrier" },
+    { key: "shippingCost", label: "Shipping Cost", type: "number", path: "shippingCost" },
+    { key: "shippedDate", label: "Shipped Date", type: "date", path: "shippedDate" },
+    { key: "donorName", label: "Donor", type: "text", getValue: (item) => item.donation?.donor ? `${item.donation.donor.firstName} ${item.donation.donor.lastName}` : null },
+  ],
+  feedback: [
+    { key: "status", label: "Status", type: "enum", path: "status" },
+    { key: "rating", label: "Rating", type: "number", path: "rating" },
+    { key: "feedbackDate", label: "Feedback Date", type: "date", path: "feedbackDate" },
+    { key: "donorName", label: "Donor", type: "text", getValue: (item) => item.donation?.donor ? `${item.donation.donor.firstName} ${item.donation.donor.lastName}` : null },
+  ],
+  "donation-kits": [
+    { key: "isActive", label: "Active", type: "boolean", path: "isActive" },
+    { key: "componentsCount", label: "Components Count", type: "count", getValue: (item) => item.components?.length || 0 },
+  ],
+  books: [
+    { key: "format", label: "Format", type: "text", path: "bookFormat.formatType" },
+    { key: "language", label: "Language", type: "text", path: "bookFormat.language" },
+    { key: "currentStock", label: "Current Stock", type: "number", path: "currentStock" },
+    { key: "reorderLevel", label: "Reorder Level", type: "number", path: "reorderLevel" },
+    { key: "unitCost", label: "Unit Cost", type: "number", path: "unitCost" },
+  ],
+  envelopes: [
+    { key: "currentStock", label: "Current Stock", type: "number", path: "currentStock" },
+    { key: "reorderLevel", label: "Reorder Level", type: "number", path: "reorderLevel" },
+    { key: "unitCost", label: "Unit Cost", type: "number", path: "unitCost" },
+    { key: "isActive", label: "Active", type: "boolean", path: "isActive" },
+  ],
+  boxes: [
+    { key: "currentStock", label: "Current Stock", type: "number", path: "currentStock" },
+    { key: "reorderLevel", label: "Reorder Level", type: "number", path: "reorderLevel" },
+    { key: "unitCost", label: "Unit Cost", type: "number", path: "unitCost" },
+    { key: "isActive", label: "Active", type: "boolean", path: "isActive" },
+  ],
+  "promotion-inventory": [
+    { key: "promotionInventoryType", label: "Type", type: "text", path: "promotionInventoryType" },
+    { key: "currentStock", label: "Current Stock", type: "number", path: "currentStock" },
+    { key: "reorderLevel", label: "Reorder Level", type: "number", path: "reorderLevel" },
+    { key: "unitCost", label: "Unit Cost", type: "number", path: "unitCost" },
+    { key: "isActive", label: "Active", type: "boolean", path: "isActive" },
+  ],
+  events: [
+    { key: "type", label: "Event Type", type: "enum", path: "type" },
+    { key: "startDate", label: "Start Date", type: "date", path: "startDate" },
+    { key: "city", label: "City", type: "text", path: "city" },
+    { key: "isActive", label: "Is Active", type: "boolean", path: "isActive" },
+    { key: "employeeName", label: "Owner", type: "text", path: "employee.name" },
+  ],
+  "promotion-assets": [
+    { key: "assetCategory", label: "Category", type: "enum", path: "assetCategory" },
+    { key: "assetType", label: "Asset Type", type: "enum", path: "assetType" },
+    { key: "isActive", label: "Active", type: "boolean", path: "isActive" },
+  ],
+  vendors: [
+    { key: "isActive", label: "Active", type: "boolean", path: "isActive" },
+    { key: "supplyType", label: "Supply Type", type: "text", path: "supplyType" },
+    { key: "rating", label: "Rating", type: "number", path: "rating" },
+  ],
+  invoices: [
+    { key: "status", label: "Invoice Status", type: "enum", path: "status" },
+    { key: "invoiceDate", label: "Invoice Date", type: "date", path: "invoiceDate" },
+    { key: "dueDate", label: "Due Date", type: "date", path: "dueDate" },
+    { key: "totalAmount", label: "Total Amount", type: "number", path: "totalAmount" },
+    { key: "vendorName", label: "Vendor", type: "text", path: "vendor.name" },
+    { key: "itemsCount", label: "Invoice Items Count", type: "count", getValue: (item) => item.items?.length || 0 },
+  ],
+  payables: [
+    { key: "status", label: "Payable Status", type: "enum", path: "status" },
+    { key: "remainingAmount", label: "Remaining Amount", type: "number", path: "remainingAmount" },
+    { key: "dueDate", label: "Due Date", type: "date", path: "dueDate" },
+    { key: "invoiceStatus", label: "Invoice Status", type: "text", path: "invoice.status" },
+  ],
+  payments: [
+    { key: "paymentMethod", label: "Payment Method", type: "enum", path: "paymentMethod" },
+    { key: "paymentDate", label: "Payment Date", type: "date", path: "paymentDate" },
+    { key: "amount", label: "Amount", type: "number", path: "amount" },
+    { key: "vendorName", label: "Vendor", type: "text", path: "payable.invoice.vendor.name" },
+  ],
 };
+
+function buildAdminAnalyticsMetadata(items, moduleKey) {
+  const definitions = adminAnalyticsFieldDefinitions[moduleKey] || [];
+
+  return definitions.map((definition) => {
+    const values = items.map((item) =>
+      typeof definition.getValue === "function" ? definition.getValue(item) : getValueAtPath(item, definition.path),
+    );
+    const operators =
+      definition.operators ||
+      (definition.type === "enum"
+        ? ["equals", "in"]
+        : definition.type === "boolean"
+          ? ["equals"]
+          : definition.type === "number" || definition.type === "count"
+            ? ["eq", "gt", "gte", "lt", "between"]
+            : definition.type === "date"
+              ? ["before", "after", "between"]
+              : ["contains", "equals"]);
+
+    return {
+      key: definition.key,
+      label: definition.label,
+      type: definition.type,
+      operators,
+      options:
+        definition.type === "boolean"
+          ? [
+              { label: "Yes", value: "true" },
+              { label: "No", value: "false" },
+            ]
+          : definition.type === "enum"
+            ? uniqueOptions(values)
+            : definition.options || [],
+      path: definition.path,
+      getValue: definition.getValue,
+    };
+  });
+}
 
 async function getAdminModuleItems(moduleKey, env) {
   const routeMap = {
@@ -2481,15 +2720,6 @@ async function getAdminModuleItems(moduleKey, env) {
   }
 
   return payload.data?.items || [];
-}
-
-function buildAdminAnalyticsSummary(items, filters, moduleKey) {
-  return {
-    filteredTotal: items.length,
-    sourceTotal: items.length,
-    activeFilters: Array.isArray(filters) ? filters.length : 0,
-    availableAttributes: (adminAnalyticsAttributeMap[moduleKey] || []).length,
-  };
 }
 
 function buildAdminAnalyticsCharts(items, moduleKey) {
@@ -2544,11 +2774,36 @@ function buildAdminAnalyticsCharts(items, moduleKey) {
   return [];
 }
 
-async function getAdminAnalyticsMetadata(moduleKey) {
+async function getAdminAnalyticsMetadataWithEnv(moduleKey, env) {
+  const items = await getAdminModuleItems(moduleKey, env);
+  return buildAdminAnalyticsMetadata(items, moduleKey);
+}
+
+function isAnalyticsFilterReady(filter, attributesMap) {
+  const attribute = attributesMap[filter.attribute];
+
+  if (!attribute || !filter.operator) {
+    return false;
+  }
+
+  if (filter.operator === "between") {
+    return filter.value !== undefined && filter.value !== "" && filter.valueTo !== undefined && filter.valueTo !== "";
+  }
+
+  if (attribute.type === "boolean") {
+    return filter.value !== undefined && filter.value !== "";
+  }
+
+  return filter.value !== undefined && filter.value !== "";
+}
+
+async function getAdminAnalyticsMetadataResponse(moduleKey, env) {
+  const attributes = await getAdminAnalyticsMetadataWithEnv(moduleKey, env);
+
   return success({
     message: "Analytics metadata retrieved.",
     data: {
-      attributes: adminAnalyticsAttributeMap[moduleKey] || [],
+      attributes: attributes.map(({ getValue, ...attribute }) => attribute),
     },
   });
 }
@@ -2557,13 +2812,24 @@ async function queryAdminAnalytics(moduleKey, request, env) {
   const body = await readBody(request);
   const filters = Array.isArray(body?.filters) ? body.filters : [];
   const items = await getAdminModuleItems(moduleKey, env);
+  const attributes = await getAdminAnalyticsMetadataWithEnv(moduleKey, env);
+  const attributesMap = Object.fromEntries(attributes.map((attribute) => [attribute.key, attribute]));
+  const activeFilters = filters.filter((filter) => isAnalyticsFilterReady(filter, attributesMap));
+  const filteredItems = items.filter((item) =>
+    activeFilters.every((filter) => matchesAnalyticsFilter(item, attributesMap[filter.attribute], filter)),
+  );
 
   return success({
     message: "Analytics query completed.",
     data: {
-      items,
-      summary: buildAdminAnalyticsSummary(items, filters, moduleKey),
-      charts: buildAdminAnalyticsCharts(items, moduleKey),
+      items: filteredItems,
+      summary: {
+        filteredTotal: filteredItems.length,
+        sourceTotal: items.length,
+        activeFilters: activeFilters.length,
+        availableAttributes: attributes.length,
+      },
+      charts: buildAdminAnalyticsCharts(filteredItems, moduleKey),
     },
   });
 }
@@ -2582,7 +2848,7 @@ export default {
 
     try {
       if (analyticsMatch && request.method === "GET" && analyticsMatch[2] === "metadata") {
-        return await getAdminAnalyticsMetadata(analyticsMatch[1]);
+        return await getAdminAnalyticsMetadataResponse(analyticsMatch[1], env);
       }
 
       if (analyticsMatch && request.method === "POST" && analyticsMatch[2] === "query") {
